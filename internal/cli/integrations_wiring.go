@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/phuc-nt/dandori/internal/config"
@@ -13,6 +14,7 @@ import (
 	"github.com/phuc-nt/dandori/internal/integrations/jira"
 	"github.com/phuc-nt/dandori/internal/integrations/slack"
 	"github.com/phuc-nt/dandori/internal/learn"
+	"github.com/phuc-nt/dandori/internal/redact"
 	"github.com/phuc-nt/dandori/internal/store"
 	"github.com/phuc-nt/dandori/internal/web"
 )
@@ -55,8 +57,12 @@ func flagToJira(cfg *config.Config, st *store.Store, flagID int64) error {
 	if i.AtlassianSite == "" || i.AtlassianToken == "" {
 		return fmt.Errorf("atlassian credentials not configured")
 	}
+	labels := []string{"dandori"}
+	if strings.HasPrefix(reason, "low grade") {
+		labels = append(labels, "dandori-governance")
+	}
 	c := jira.New(i.AtlassianSite, i.AtlassianEmail, i.AtlassianToken)
-	key, err := c.CreateIssue(i.JiraProject, summary, description, []string{"dandori"})
+	key, err := c.CreateIssue(i.JiraProject, summary, description, labels)
 	if err != nil {
 		return err
 	}
@@ -158,7 +164,9 @@ func spikeWorker(ctx context.Context, cfg *config.Config, st *store.Store) {
 	}
 }
 
-// approvalExpiryWorker flips stale pending approvals to expired every minute.
+// approvalExpiryWorker flips stale pending approvals to expired every minute
+// and escalates ones sitting unanswered past 4× the gate wait (an alert
+// BEFORE the TTL silently expires them).
 func approvalExpiryWorker(ctx context.Context, cfg *config.Config, st *store.Store) {
 	eng := govern.NewEngine(cfg, st)
 	t := time.NewTicker(time.Minute)
@@ -171,8 +179,45 @@ func approvalExpiryWorker(ctx context.Context, cfg *config.Config, st *store.Sto
 			func() {
 				defer recoverLog("approval expiry")
 				eng.ExpireStale()
+				escalateStalePending(cfg, st)
 			}()
 		}
+	}
+}
+
+// escalateStalePending emits one approval_escalation event per stuck
+// approval (the Slack alerter delivers it).
+func escalateStalePending(cfg *config.Config, st *store.Store) {
+	slaSeconds := cfg.GateWaitSeconds * 4
+	if slaSeconds <= 0 {
+		return
+	}
+	cutoff := time.Now().UTC().Add(-time.Duration(slaSeconds) * time.Second).Format(time.RFC3339)
+	rows, err := st.DB.Query(`SELECT id, action FROM approvals WHERE status = 'pending' AND requested_at < ?`, cutoff)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	type stale struct {
+		id     int64
+		action string
+	}
+	var stales []stale
+	for rows.Next() {
+		var s stale
+		if rows.Scan(&s.id, &s.action) == nil {
+			stales = append(stales, s)
+		}
+	}
+	for _, s := range stales {
+		key := fmt.Sprintf("escalated:%d", s.id)
+		if st.Setting(key) != "" {
+			continue
+		}
+		_ = st.SetSetting(key, store.Now())
+		_, _ = st.DB.Exec(`INSERT INTO events(run_id, ts, kind, tool_name, ok, payload)
+			VALUES(NULL, ?, 'approval_escalation', '', 0, ?)`, store.Now(),
+			redact.String(fmt.Sprintf("approval #%d unanswered past SLA: %.80s — decide at http://%s/reviews", s.id, s.action, cfg.Listen)))
 	}
 }
 

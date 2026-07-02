@@ -5,22 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/phuc-nt/dandori/internal/redact"
 	"github.com/phuc-nt/dandori/internal/store"
 )
 
-// secretRe matches token-shaped strings that can leak into audit details via
-// gated agent commands (bearer headers, provider keys, kv-style secrets).
-// The bundle is built to be handed to auditors/SIEM — redact at export time.
-var secretRe = regexp.MustCompile(
-	`(?i)(Bearer\s+\S+|xox[a-z]-[\w-]+|ATATT\S+|sk-[\w-]{8,}|ghp_\w+|(token|secret|password|api[_-]?key)\s*[=:]\s*\S+)`)
-
-func redact(s string) string {
-	return secretRe.ReplaceAllString(s, "[REDACTED]")
-}
+// Redaction happens at ingest already; exporting redacts again as defense in
+// depth — the bundle is handed to auditors/SIEM.
+func redactStr(s string) string { return redact.String(s) }
 
 // csvCell defuses spreadsheet formula injection (=,+,-,@ prefixes execute in
 // Excel on an auditor's machine).
@@ -104,7 +98,7 @@ func BuildComplianceBundle(st *store.Store, actor string) (*ComplianceBundle, er
 		if err := rows.Scan(&e.ID, &e.TS, &e.Actor, &e.Action, &e.Subject, &e.Detail, &e.PrevHash, &e.Hash); err != nil {
 			return err
 		}
-		e.Detail = redact(e.Detail)
+		e.Detail = redactStr(e.Detail)
 		b.AuditLog = append(b.AuditLog, e)
 		return nil
 	}); err != nil {
@@ -117,7 +111,7 @@ func BuildComplianceBundle(st *store.Store, actor string) (*ComplianceBundle, er
 			if err := rows.Scan(&e.ID, &e.RunID, &e.Action, &e.Status, &e.DecidedBy, &e.Note, &e.Channel, &e.Requested, &e.Decided); err != nil {
 				return err
 			}
-			e.Action = redact(e.Action)
+			e.Action = redactStr(e.Action)
 			b.Approvals = append(b.Approvals, e)
 			return nil
 		}); err != nil {

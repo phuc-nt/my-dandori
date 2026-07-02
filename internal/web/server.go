@@ -86,6 +86,8 @@ func (s *Server) routes() {
 	s.mux.Get("/dash/org", s.handleDashOrg)
 	s.mux.Get("/dash/project/{project}", s.handleDashProject)
 	s.mux.Get("/dash/agent/{agent}", s.handleDashAgent)
+	s.mux.Post("/agents/{agent}/band", s.handleSetBand)
+	s.mux.Get("/agents/{agent}/review", s.handleAgentAIReview)
 
 	s.mux.Get("/runs", s.handleRuns)
 	s.mux.Get("/runs/compare", s.handleRunCompare)
@@ -94,6 +96,8 @@ func (s *Server) routes() {
 	s.mux.Post("/runs/{id}/kill", s.handleRunKill)
 	s.mux.Post("/runs/{id}/task-key", s.handleRunTaskKey)
 	s.mux.Post("/runs/{id}/flag", s.handleRunFlag)
+	s.mux.Post("/runs/{id}/playbook", s.handlePlaybookCreate)
+	s.mux.Get("/playbooks", s.handlePlaybooks)
 
 	s.mux.Get("/reviews", s.handleReviews)
 	s.mux.Post("/reviews/{id}/decide", s.handleReviewDecide)
@@ -103,7 +107,10 @@ func (s *Server) routes() {
 
 	s.mux.Get("/provenance", s.handleProvenance)
 	s.mux.Get("/rules", s.handleRules)
+	s.mux.Post("/rules", s.handleRuleCreate)
+	s.mux.Post("/rules/simulate", s.handleRuleSimulate)
 	s.mux.Post("/rules/{id}/toggle", s.handleRuleToggle)
+	s.mux.Post("/rules/{id}/delete", s.handleRuleDelete)
 
 	s.mux.Post("/api/kill", s.handleGlobalKill)
 	// POST: the export appends an audit entry (side effect) — GET would let a

@@ -46,7 +46,7 @@
 <div class="bg-white border rounded-lg overflow-hidden">
 <table class="w-full text-sm">
   <thead class="bg-gray-100 text-left"><tr>
-    <th class="p-2">#</th><th class="p-2">Agent</th><th class="p-2">Grade</th><th class="p-2">Composite</th>
+    <th class="p-2">#</th><th class="p-2">Agent</th><th class="p-2">Band</th><th class="p-2">Grade</th><th class="p-2">Composite</th>
     <th class="p-2">Accept</th><th class="p-2">Success</th><th class="p-2">Autonomy</th><th class="p-2">Reliab.</th>
     <th class="p-2 text-right">Runs</th><th class="p-2 text-right">Cost</th><th class="p-2 text-right">Useful</th><th class="p-2">Δ7d</th>
   </tr></thead>
@@ -55,6 +55,7 @@
     <tr class="border-t hover:bg-gray-50">
       <td class="p-2 text-gray-400">{{$i}}</td>
       <td class="p-2"><a class="text-blue-600 hover:underline" href="/dash/agent/{{$r.AgentID}}">{{$r.AgentName}}</a></td>
+      <td class="p-2">{{with index $.AgentBands $r.AgentID}}<span class="px-1.5 py-0.5 rounded text-xs {{if eq . "supervised"}}bg-red-100 text-red-700{{else if eq . "trusted"}}bg-green-100 text-green-700{{else}}bg-gray-100 text-gray-600{{end}}">{{.}}</span>{{else}}<span class="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600">gated</span>{{end}}</td>
       <td class="p-2 font-bold">{{$r.Grade.Letter}}{{if $r.Grade.Uncalibrated}}<span class="text-xs text-gray-400" title="fleet < 5: static bands, not percentile">*</span>{{else}}<span class="text-xs text-gray-400"> p{{score $r.Grade.Percentile}}</span>{{end}}</td>
       <td class="p-2">{{score $r.Composite}}</td>
       <td class="p-2"><a class="hover:underline" title="{{$r.Metrics.Acceptance.Formula}}" href="/provenance?agent={{$r.AgentID}}&metric=acceptance">{{score $r.Metrics.Acceptance.Value}}</a></td>

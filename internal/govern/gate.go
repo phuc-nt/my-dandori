@@ -9,19 +9,34 @@ import (
 	"github.com/phuc-nt/dandori/internal/store"
 )
 
-// checkGate handles permission-gate rules (G4): matching tool calls create a
-// pending approval, then wait (polling) up to GateWaitSeconds for a human
-// decision from the web console or Slack. Approved → allow (consumed once);
-// rejected or timeout → deny with retry instructions.
+// checkGate handles permission-gate rules (G4), modulated by the agent's
+// autonomy band: supervised gates every edit tool call, trusted skips gate
+// rules unless critical. Matching calls create a pending approval, then wait
+// (polling) up to GateWaitSeconds for a human decision from the web console
+// or Slack. Approved → allow (consumed once); rejected/timeout → deny.
 func (e *Engine) checkGate(ctx context.Context, tc ToolCall, rules []Rule) (Decision, bool) {
+	band := BandFor(e.St, tc.AgentID)
 	var gated *Rule
 	for i := range rules {
-		if rules[i].Kind == "gate" && rules[i].matches(tc) {
-			gated = &rules[i]
-			break
+		r := &rules[i]
+		if r.Kind != "gate" || !r.appliesTo(tc) || !r.matches(tc) {
+			continue
 		}
+		if band == BandTrusted && !r.Critical {
+			continue // trusted agents skip non-critical gates
+		}
+		gated = r
+		break
 	}
-	if gated == nil {
+	reason := ""
+	switch {
+	case gated != nil:
+		reason = fmt.Sprintf("%s (rule #%d)", gated.Description, gated.ID)
+	case band == BandSupervised && (isEditTool(tc.ToolName) || tc.ToolName == "Bash"):
+		// Supervised means supervised: file edits AND shell commands (a shell
+		// can edit anything) both need a human.
+		reason = "supervised band: edits and shell commands require approval"
+	default:
 		return Decision{}, false
 	}
 
@@ -29,7 +44,9 @@ func (e *Engine) checkGate(ctx context.Context, tc ToolCall, rules []Rule) (Deci
 	if action == "" && len(tc.Paths) > 0 {
 		action = tc.ToolName + " " + tc.Paths[0]
 	}
-	reason := fmt.Sprintf("%s (rule #%d)", gated.Description, gated.ID)
+	if action == "" {
+		action = tc.ToolName
+	}
 	e.expireStale()
 	id, err := e.findOrCreateApproval(tc.RunID, action, reason)
 	if err != nil {
@@ -51,6 +68,11 @@ func (e *Engine) checkGate(ctx context.Context, tc ToolCall, rules []Rule) (Deci
 		return Decision{Deny, fmt.Sprintf("[dandori G4] approval #%d still pending after %ds — ask an operator to approve at the Dandori console, then retry",
 			id, e.Cfg.GateWaitSeconds)}, true
 	}
+}
+
+// isEditTool identifies file-mutating tools (supervised-band gating).
+func isEditTool(name string) bool {
+	return name == "Write" || name == "Edit" || name == "NotebookEdit"
 }
 
 // CreateApproval inserts a pending approval and returns its id.
@@ -88,8 +110,11 @@ func (e *Engine) expireStale() {
 		return
 	}
 	cutoff := time.Now().UTC().Add(-time.Duration(ttl) * time.Minute).Format(time.RFC3339)
+	// Closed-loop band proposals are review-queue items humans act on in
+	// their own time — they must NOT die with the tool-call gate TTL
+	// (an expired proposal would never be re-proposed while the flag stays open).
 	res, err := e.St.DB.Exec(`UPDATE approvals SET status = 'expired', decided_at = ?
-		WHERE status = 'pending' AND requested_at < ?`, store.Now(), cutoff)
+		WHERE status = 'pending' AND requested_at < ? AND action NOT LIKE 'band-demote:%'`, store.Now(), cutoff)
 	if err != nil {
 		return
 	}

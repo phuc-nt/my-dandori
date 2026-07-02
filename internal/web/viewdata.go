@@ -2,6 +2,7 @@ package web
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/phuc-nt/dandori/internal/govern"
 	"github.com/phuc-nt/dandori/internal/learn"
@@ -32,11 +33,12 @@ type ApprovalRow struct {
 	Channel                                 string
 }
 
-// BudgetRow shows a budget scope with its live spend.
+// BudgetRow shows a budget scope with its live spend and end-of-month
+// projection (linear burn rate — stated on the UI).
 type BudgetRow struct {
 	ScopeType, ScopeID string
 	LimitUSD, SpendUSD float64
-	Pct                float64
+	Pct, ProjectedUSD  float64
 }
 
 // FlagRow is an open flag needing attention.
@@ -51,7 +53,8 @@ type FlagRow struct {
 type RuleRow struct {
 	ID                         int64
 	Kind, Pattern, Description string
-	Enabled                    bool
+	ScopeType, ScopeID         string
+	Enabled, Critical          bool
 }
 
 const listCap = 200 // hard cap for list queries (UI pages, no pagination yet)
@@ -169,17 +172,23 @@ func (s *Server) queryBudgets() ([]BudgetRow, error) {
 	if !haveGlobal {
 		out = append([]BudgetRow{{ScopeType: "global", LimitUSD: s.Cfg.Budget.GlobalMonthlyUSD}}, out...)
 	}
+	now := time.Now().UTC()
+	dayOfMonth := float64(now.Day())
+	daysInMonth := float64(time.Date(now.Year(), now.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day())
 	for i := range out {
 		out[i].SpendUSD, _ = eng.SpendMonth(out[i].ScopeType, out[i].ScopeID)
 		if out[i].LimitUSD > 0 {
 			out[i].Pct = out[i].SpendUSD / out[i].LimitUSD * 100
+		}
+		if dayOfMonth > 0 {
+			out[i].ProjectedUSD = out[i].SpendUSD / dayOfMonth * daysInMonth
 		}
 	}
 	return out, nil
 }
 
 func (s *Server) queryRules() ([]RuleRow, error) {
-	rows, err := s.Store.DB.Query(`SELECT id, kind, pattern, COALESCE(description,''), enabled
+	rows, err := s.Store.DB.Query(`SELECT id, kind, pattern, COALESCE(description,''), enabled, critical, scope_type, scope_id
 		FROM guardrail_rules ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -188,11 +197,12 @@ func (s *Server) queryRules() ([]RuleRow, error) {
 	var out []RuleRow
 	for rows.Next() {
 		var r RuleRow
-		var en int
-		if err := rows.Scan(&r.ID, &r.Kind, &r.Pattern, &r.Description, &en); err != nil {
+		var en, crit int
+		if err := rows.Scan(&r.ID, &r.Kind, &r.Pattern, &r.Description, &en, &crit, &r.ScopeType, &r.ScopeID); err != nil {
 			return nil, err
 		}
 		r.Enabled = en == 1
+		r.Critical = crit == 1
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -221,7 +231,24 @@ func (s *Server) costTrend(days int) (labels []string, values []float64, err err
 
 func itoa(n int) string { return strconv.Itoa(n) }
 
+// queryBands maps agent id → autonomy band (missing rows = gated default).
+func (s *Server) queryBands() map[string]string {
+	out := map[string]string{}
+	rows, err := s.Store.DB.Query(`SELECT agent_id, band FROM agent_bands`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, band string
+		if rows.Scan(&id, &band) == nil {
+			out[id] = band
+		}
+	}
+	return out
+}
+
 // leaderboard is a thin wrapper so handlers don't import learn directly.
 func (s *Server) leaderboard() ([]learn.LeaderboardRow, error) {
-	return learn.Leaderboard(s.Store, s.Cfg.LearnWindowDays)
+	return learn.LeaderboardCalibrated(s.Store, s.Cfg.LearnWindowDays, s.Cfg.CalibrateWithHumans)
 }

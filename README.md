@@ -47,6 +47,10 @@ Claude Code ──PreToolUse──▶ dandori hook pre-tool
 | `dandori export compliance [--format csv]` | Bundle audit chain + verify cho auditor/SIEM |
 | `dandori report confluence` | Post fleet report lên Confluence (DRY_RUN guard) |
 | `dandori context show --confluence <id>` | Đọc page Confluence thành text |
+| `dandori band <agent> [supervised\|gated\|trusted]` | Autonomy band — grade có hệ quả |
+| `dandori loop run` | Closed loop: grade thấp → flag → Jira → band action |
+| `dandori review <agent>` | Nhận xét tiếng người (AI-generated, cache tuần) |
+| `dandori rules simulate --pattern '...'` | Thử guardrail trên lịch sử trước khi bật |
 
 ## Console (http://127.0.0.1:4777)
 

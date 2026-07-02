@@ -32,5 +32,11 @@
     <input name="task_key" value="{{.TaskKey}}" placeholder="SCRUM-…" class="border rounded px-2 py-1 text-sm w-28">
     <button class="bg-slate-600 text-white px-3 py-1 rounded text-sm">Set task</button>
   </form>
+  {{if eq .Status "done"}}
+  <form method="post" action="/runs/{{.ID}}/playbook" class="flex gap-1">
+    <input name="name" placeholder="playbook name" required class="border rounded px-2 py-1 text-sm w-36">
+    <button class="bg-emerald-600 text-white px-3 py-1 rounded text-sm">Save as playbook</button>
+  </form>
+  {{end}}
 </div>
 {{end}}

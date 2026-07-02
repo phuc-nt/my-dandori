@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/phuc-nt/dandori/internal/config"
+	"github.com/phuc-nt/dandori/internal/redact"
 	"github.com/phuc-nt/dandori/internal/store"
 )
 
@@ -43,8 +44,11 @@ func (g *Ingestor) EnsureRun(sessionID, cwd, transcriptPath, source string) (str
 	return runID, err
 }
 
-// AddEvent inserts one event row and returns its id.
+// AddEvent inserts one event row and returns its id. Payloads are redacted
+// at ingest: agents type secrets into commands, and the database must never
+// hold the raw value (export redacts again as defense in depth).
 func (g *Ingestor) AddEvent(runID, kind, toolName string, ok sql.NullInt64, payload string) (int64, error) {
+	payload = redact.String(payload)
 	res, err := g.St.DB.Exec(`INSERT INTO events(run_id, ts, kind, tool_name, ok, payload)
 		VALUES(?, ?, ?, ?, ?, ?)`, runID, store.Now(), kind, toolName, ok, payload)
 	if err != nil {

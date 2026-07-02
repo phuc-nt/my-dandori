@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -96,3 +97,40 @@ func TestRunsPagination(t *testing.T) {
 }
 
 var _ = store.Now
+
+func TestPlaybookSaveAndList(t *testing.T) {
+	s := testServer(t)
+	testseed.Agent(t, s.Store, "a1")
+	testseed.Run(t, s.Store, "pb-r1", "a1", "done", 1, 2.0)
+	testseed.Event(t, s.Store, "pb-r1", "tool_use", "Edit", -1, `{"file_path":"api/users.go"}`)
+	testseed.Event(t, s.Store, "pb-r1", "tool_use", "Read", -1, `{"file_path":"api/users.go"}`)
+	testseed.Event(t, s.Store, "pb-r1", "tool_use", "Read", -1, `{"file_path":"docs/spec.md"}`)
+
+	rec := postForm(t, s, "/runs/pb-r1/playbook", url.Values{"name": {"user-api pattern"}, "notes": {"good run"}})
+	if rec.Code != 303 {
+		t.Fatalf("save playbook → %d", rec.Code)
+	}
+	var topFiles string
+	s.Store.DB.QueryRow(`SELECT top_files FROM playbooks WHERE name='user-api pattern'`).Scan(&topFiles)
+	if !strings.Contains(topFiles, "api/users.go") {
+		t.Errorf("top files: %s", topFiles)
+	}
+	rec = get(t, s, "/playbooks")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "user-api pattern") {
+		t.Errorf("playbooks page: %d", rec.Code)
+	}
+	if rec := postForm(t, s, "/runs/pb-r1/playbook", url.Values{}); rec.Code != 400 {
+		t.Errorf("nameless playbook → %d, want 400", rec.Code)
+	}
+}
+
+func TestFailedRunShowsTrace(t *testing.T) {
+	s := testServer(t)
+	testseed.Agent(t, s.Store, "a1")
+	testseed.Run(t, s.Store, "fail-r1", "a1", "failed", 0, 1)
+	testseed.Event(t, s.Store, "fail-r1", "tool_result", "Bash", 0, "compile error")
+	rec := get(t, s, "/runs/fail-r1")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Why did this fail?") {
+		t.Errorf("failed run must show trace banner: %d", rec.Code)
+	}
+}

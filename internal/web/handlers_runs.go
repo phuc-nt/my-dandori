@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/phuc-nt/dandori/internal/govern"
+	"github.com/phuc-nt/dandori/internal/learn"
 	"github.com/phuc-nt/dandori/internal/store"
 )
 
@@ -90,9 +91,22 @@ func (s *Server) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	events, _ := s.queryEvents(id)
 	flags, _ := s.queryFlags("open")
-	s.render(w, r, "run_detail", map[string]any{
+	data := map[string]any{
 		"Page": "runs", "Run": runs[0], "Events": events, "Flags": flags,
-	})
+	}
+	if runs[0].Status == "failed" || runs[0].Status == "killed" {
+		trace := learn.Trace(toTraceEvents(events))
+		data["Trace"] = trace
+	}
+	s.render(w, r, "run_detail", data)
+}
+
+func toTraceEvents(events []EventRow) []learn.TraceEvent {
+	out := make([]learn.TraceEvent, len(events))
+	for i, e := range events {
+		out[i] = learn.TraceEvent{ID: e.ID, Kind: e.Kind, Tool: e.Tool, OK: e.OK, Payload: e.Payload}
+	}
+	return out
 }
 
 // handleRunKill kills one running session (UA2).

@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/phuc-nt/dandori/internal/govern"
 	"github.com/phuc-nt/dandori/internal/learn"
 )
 
@@ -46,6 +47,7 @@ func (s *Server) handleDashOrg(w http.ResponseWriter, r *http.Request) {
 		"Page": "org", "KillOn": s.Store.Setting("kill_switch_global") == "1",
 		"Board": board, "TotalCost": totalCost, "TotalRuns": totalRuns,
 		"ROI": fleetROI, "DORA": dora, "ChartJSON": string(chart), "Window": s.Cfg.LearnWindowDays,
+		"AgentBands": s.queryBands(),
 	})
 }
 
@@ -87,10 +89,19 @@ func (s *Server) handleDashAgent(w http.ResponseWriter, r *http.Request) {
 	for _, v := range composites {
 		fleet = append(fleet, v)
 	}
+	var humans []float64
+	if s.Cfg.CalibrateWithHumans {
+		humans, _ = learn.HumanBaseline(s.Store, s.Cfg.LearnWindowDays)
+		fleet = append(fleet, humans...)
+	}
+	grade := learn.GradeFor(m.Composite, fleet)
+	grade.Humans = len(humans)
+	grade.LowConfidence = m.Runs < 5
 	roi, _ := learn.ComputeROI(s.Store, id, s.Cfg.LearnWindowDays, m.Acceptance.Value)
 	runs, _ := s.queryRuns(`WHERE agent_id = ?`, id)
 	s.render(w, r, "dash_agent", map[string]any{
-		"Page": "agent", "M": m, "Grade": learn.GradeFor(m.Composite, fleet),
-		"ROI": roi, "Runs": runs,
+		"Page": "agent", "M": m, "Grade": grade,
+		"ROI": roi, "Runs": runs, "Band": govern.BandFor(s.Store, id),
+		"Bands": []string{govern.BandSupervised, govern.BandGated, govern.BandTrusted},
 	})
 }

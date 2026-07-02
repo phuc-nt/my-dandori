@@ -25,7 +25,7 @@ type Alerter struct {
 func (a *Alerter) Dispatch() error {
 	rows, err := a.St.DB.Query(`SELECT e.id, e.kind, COALESCE(e.payload,''), COALESCE(e.run_id,'')
 		FROM events e
-		WHERE e.kind IN ('budget_warn','guardrail_block','kill','flag','cost_spike')
+		WHERE e.kind IN ('budget_warn','guardrail_block','kill','flag','cost_spike','closed_loop','approval_escalation')
 		  AND e.ts >= datetime('now','-1 day')
 		  AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.dedup = 'event:' || e.id)
 		ORDER BY e.id LIMIT 20`)

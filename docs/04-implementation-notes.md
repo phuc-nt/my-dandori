@@ -84,6 +84,20 @@ Code review độc lập: verdict **approve-with-fixes** — 0 CRITICAL. Đã fi
 
 2 HIGH + 7 MEDIUM đã xử lý trong cùng phiên: whitelist Slack chỉ match **user ID** (display name giả được) + quét MỌI reaction thay vì cái đầu tiên (chống griefing); approval **consume-once** cưỡng chế (N waiter chung 1 approval → chỉ 1 được allow); wrap fix misattribution FK + ignore SIGINT để luôn finalize run; compliance export **redact secret** (Bearer/xox/ATATT/sk-/ghp_) + CSV chống formula-injection + route đổi POST (side-effect audit); CFR chỉ tính revert PR đã MERGE + bỏ ref cross-repo; revert scan lọc theo cwd + prefetch dedup + guard hash regex; percentile nearest-rank; compare cap 5 ids; MidRunMsgs bỏ dòng sidechain/meta của subagent; dọn settings key khi run kết thúc.
 
+## v3 (260702, plan `260702-1542`) — close the vision loop
+
+Khép các lời hứa vision chưa giữ, trọng tâm LEARN & GOVERN (theo `plans/reports/dandori-v3-roadmap-assessment-learn-govern-260702-report.md`):
+
+- **Autonomy bands (UA4+L6):** `supervised | gated | trusted` per agent — grade CÓ hệ quả. supervised: mọi edit cần duyệt; trusted: bỏ gate thường, rule `critical` vẫn gate; block/sandbox/budget/kill KHÔNG bao giờ nới. UI dropdown + `dandori band`. Đổi band luôn audit.
+- **Closed loop G8 (gap #1):** worker 6h + `dandori loop run`: grade **F** (≥3 runs) → flag + Jira ticket (label `dandori-governance`, DRY_RUN guard) + **auto-demote** supervised; grade **D** → đề xuất demote vào review queue (người duyệt → applier áp dụng, consume-once); hồi phục A/B/C → flag tự resolve. Toàn chuỗi audit. Fix kèm: **GradeFor tie-handling mid-rank** (fleet toàn điểm bằng nhau không còn rơi cả cụm xuống F).
+- **AI review tiếng người (hoàn thiện L1):** OpenRouter (`OPENROUTER_API_KEY/MODEL`), input chỉ là metrics+formula (không raw code), cache theo tuần, nhãn "AI-generated — verify at provenance". Lazy-load trên agent page + `dandori review`. Live-verified.
+- **Human baseline (hoàn thiện L4 "kể cả của người"):** composite proxy = done-ratio per Jira assignee (≥3 items), **ẩn danh** — chỉ đưa vào phân bố percentile, UI ghi "X agents + Y anonymous human baselines". Tắt bằng `calibrate_with_humans: false`.
+- **Grade confidence:** <5 runs → cờ low-confidence (mờ + "?"), closed loop tự bỏ qua mẫu nhỏ.
+- **Policy simulator UE4 + rule builder UE2:** form tạo rule (kind/scope/critical) + **Simulate trên N ngày events thật** trước khi bật (hits + drill về run); rule theo scope global/agent/project; CLI `dandori rules simulate`. Create/delete rule đều audit.
+- **Playbooks UG4 (flywheel):** run done → "Save as playbook" (prompt đầu, top files, model, chuẩn cost) → trang `/playbooks` copy được. Tri thức ở lại.
+- **Why-failed UF5:** run failed/killed có banner verdict rule-based (loop lỗi lặp / block cuối / lỗi cuối) + tô đậm evidence rows trong timeline.
+- **Hardening:** secret **redact tại INGEST** (package `internal/redact` dùng chung — DB không còn giữ token thô; export redact lần 2); escalation SLA (approval pending quá 4×gate-wait → event → Slack, trước khi TTL expire); budget **projected EOM** theo burn-rate.
+
 ## Giới hạn đã biết / [Sau]
 
 - Tailwind + HTMX + Chart.js qua CDN — cần mạng lần đầu; có CSS fallback tối giản.

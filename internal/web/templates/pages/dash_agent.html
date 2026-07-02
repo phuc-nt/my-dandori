@@ -1,11 +1,22 @@
 {{define "content"}}
-<h1 class="text-2xl font-bold mb-1">Agent: {{.M.AgentName}}</h1>
-<p class="text-gray-500 mb-4">Performance review over the last {{.M.WindowDays}} days.</p>
+<div class="flex items-center justify-between flex-wrap gap-2 mb-1">
+  <h1 class="text-2xl font-bold">Agent: {{.M.AgentName}}</h1>
+  <form method="post" action="/agents/{{.M.AgentID}}/band" class="flex gap-2 items-center"
+        onsubmit="return confirm('Change autonomy band? This changes what gets gated immediately.')">
+    <span class="text-sm text-gray-500">Autonomy band</span>
+    <select name="band" class="border rounded px-2 py-1 text-sm">
+      {{range .Bands}}<option value="{{.}}" {{if eq . $.Band}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
+    <input name="reason" placeholder="reason" class="border rounded px-2 py-1 text-sm w-36">
+    <button class="bg-slate-700 text-white px-3 py-1 rounded text-sm">Set</button>
+  </form>
+</div>
+<p class="text-gray-500 mb-4">Performance review over the last {{.M.WindowDays}} days · band: <b>{{.Band}}</b></p>
 
 <div class="grid md:grid-cols-5 gap-4 mb-6">
   <div class="bg-white border rounded-lg p-4 text-center">
-    <div class="text-5xl font-black">{{.Grade.Letter}}</div>
-    <div class="text-xs text-gray-500 mt-1">{{if .Grade.Uncalibrated}}static bands (fleet {{.Grade.FleetSize}} &lt; 5){{else}}percentile {{score .Grade.Percentile}} of fleet {{.Grade.FleetSize}}{{end}}</div>
+    <div class="text-5xl font-black {{if .Grade.LowConfidence}}opacity-40{{end}}" {{if .Grade.LowConfidence}}title="low confidence: {{.M.Runs}} runs < 5"{{end}}>{{.Grade.Letter}}{{if .Grade.LowConfidence}}<span class="text-lg align-top">?</span>{{end}}</div>
+    <div class="text-xs text-gray-500 mt-1">{{if .Grade.Uncalibrated}}static bands (fleet {{.Grade.FleetSize}} &lt; 5){{else}}percentile {{score .Grade.Percentile}} of fleet {{.Grade.FleetSize}}{{if .Grade.Humans}} ({{.Grade.Humans}} anonymous human baselines included){{end}}{{end}}</div>
   </div>
   {{range $m := (list .M.Acceptance .M.Success .M.Autonomy .M.Reliability)}}
   <div class="bg-white border rounded-lg p-4">
@@ -15,6 +26,13 @@
     <div class="text-xs text-gray-400 truncate" title="{{$m.Formula}}">{{$m.Formula}}</div>
   </div>
   {{end}}
+</div>
+
+<div class="bg-white border rounded-lg p-4 mb-6">
+  <h2 class="font-semibold mb-1">Performance review</h2>
+  <div hx-get="/agents/{{.M.AgentID}}/review" hx-trigger="load" hx-swap="innerHTML">
+    <span class="text-gray-400 text-sm">Loading review…</span>
+  </div>
 </div>
 
 <div class="grid md:grid-cols-2 gap-4 mb-6">

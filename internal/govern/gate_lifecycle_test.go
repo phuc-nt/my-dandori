@@ -53,6 +53,27 @@ func TestApprovalExpiry(t *testing.T) {
 	}
 }
 
+// Band-demote proposals are human-paced review items — the tool-call gate
+// TTL must never expire them (an expired proposal would be lost forever
+// while the low-grade flag blocks re-proposal).
+func TestExpirySparesBandProposals(t *testing.T) {
+	e := testEngine(t)
+	e.Cfg.ApprovalTTLMinutes = 30
+	seedRun(t, e, "g3", 0)
+	old := time.Now().UTC().Add(-2 * time.Hour).Format(time.RFC3339)
+	e.St.DB.Exec(`INSERT INTO approvals(run_id, action, reason, requested_at) VALUES('g3','git push','gate', ?)`, old)
+	e.St.DB.Exec(`INSERT INTO approvals(run_id, action, reason, requested_at) VALUES('g3','band-demote:a1:supervised','closed-loop', ?)`, old)
+
+	e.ExpireStale()
+
+	var gateStatus, proposalStatus string
+	e.St.DB.QueryRow(`SELECT status FROM approvals WHERE action = 'git push'`).Scan(&gateStatus)
+	e.St.DB.QueryRow(`SELECT status FROM approvals WHERE action LIKE 'band-demote:%'`).Scan(&proposalStatus)
+	if gateStatus != "expired" || proposalStatus != "pending" {
+		t.Errorf("gate=%s proposal=%s, want expired/pending", gateStatus, proposalStatus)
+	}
+}
+
 func TestComplianceExportBundle(t *testing.T) {
 	e := testEngine(t)
 	seedRun(t, e, "c1", 1.5)

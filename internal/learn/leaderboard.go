@@ -20,10 +20,16 @@ type LeaderboardRow struct {
 }
 
 // Leaderboard evaluates every active agent, calibrates grades against the
-// fleet, and sorts by composite descending. Each agent is Computed exactly
-// once for the main window — the metrics feed both the calibration
-// distribution and the display row (no N+1 recompute).
+// fleet — including anonymous human baselines when enabled (the vision's
+// "kể cả của người") — and sorts by composite descending. Each agent is
+// Computed exactly once for the main window.
 func Leaderboard(st *store.Store, windowDays int) ([]LeaderboardRow, error) {
+	return LeaderboardCalibrated(st, windowDays, true)
+}
+
+// LeaderboardCalibrated lets callers exclude the human baseline
+// (config `calibrate_with_humans: false`).
+func LeaderboardCalibrated(st *store.Store, windowDays int, withHumans bool) ([]LeaderboardRow, error) {
 	agentIDs, err := activeAgents(st, windowDays)
 	if err != nil {
 		return nil, err
@@ -38,6 +44,13 @@ func Leaderboard(st *store.Store, windowDays int) ([]LeaderboardRow, error) {
 		metrics[id] = m
 		fleet = append(fleet, m.Composite)
 	}
+	var humans []float64
+	if withHumans {
+		if humans, err = HumanBaseline(st, windowDays); err != nil {
+			return nil, err
+		}
+		fleet = append(fleet, humans...)
+	}
 	rows := make([]LeaderboardRow, 0, len(agentIDs))
 	for _, agentID := range agentIDs {
 		m := metrics[agentID]
@@ -45,10 +58,13 @@ func Leaderboard(st *store.Store, windowDays int) ([]LeaderboardRow, error) {
 		if err != nil {
 			return nil, err
 		}
+		grade := GradeFor(m.Composite, fleet)
+		grade.Humans = len(humans)
+		grade.LowConfidence = m.Runs < 5
 		rows = append(rows, LeaderboardRow{
 			AgentID:    agentID,
 			AgentName:  m.AgentName,
-			Grade:      GradeFor(m.Composite, fleet),
+			Grade:      grade,
 			Composite:  m.Composite,
 			Runs:       m.Runs,
 			CostUSD:    m.CostUSD,

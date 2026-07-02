@@ -27,10 +27,18 @@
     <div class="text-2xl font-bold">{{if .Run.TaskKey}}{{.Run.TaskKey}}{{else}}—{{end}}</div></div>
 </div>
 
+{{if .Trace}}
+<div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+  <div class="font-semibold text-red-700">Why did this fail?</div>
+  <div class="text-sm mt-1">{{.Trace.Verdict}}</div>
+  <div class="text-xs text-gray-500 mt-1">Các dòng liên quan được tô đậm trong timeline (rule-based, kiểm chứng được).</div>
+</div>
+{{end}}
+
 <h2 class="text-lg font-semibold mb-2">Timeline</h2>
 <div class="bg-white border rounded-lg divide-y">
   {{range .Events}}
-  <div class="p-3 flex gap-3 text-sm {{if eq .Kind "guardrail_block"}}bg-red-50{{else if eq .Kind "permission_ask"}}bg-amber-50{{end}}">
+  <div class="p-3 flex gap-3 text-sm {{if and $.Trace (index $.Trace.HighlightIDs .ID)}}bg-red-100 border-l-4 border-red-500{{else if eq .Kind "guardrail_block"}}bg-red-50{{else if eq .Kind "permission_ask"}}bg-amber-50{{end}}">
     <div class="text-gray-400 font-mono whitespace-nowrap">{{.TS}}</div>
     <div class="font-semibold whitespace-nowrap">{{.Kind}}{{if .Tool}} · {{.Tool}}{{end}}</div>
     {{if .OK}}<div class="{{if eq (deref .OK) 1}}text-green-600{{else}}text-red-600{{end}}">ok={{deref .OK}}</div>{{end}}

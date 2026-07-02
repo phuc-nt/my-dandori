@@ -43,6 +43,9 @@ type Config struct {
 	WatchIntervalSeconds int                `yaml:"watch_interval_seconds"`
 	ProjectsDir          string             `yaml:"projects_dir"`
 	LearnWindowDays      int                `yaml:"learn_window_days"`
+	CalibrateWithHumans  bool               `yaml:"calibrate_with_humans"`
+	OpenRouterKey        string             `yaml:"-"`
+	OpenRouterModel      string             `yaml:"-"`
 	GateChecks           []string           `yaml:"gate_checks"`
 	Pricing              map[string]Pricing `yaml:"pricing"`
 	Integrations         Integrations       `yaml:"integrations"`
@@ -61,6 +64,7 @@ func defaults() *Config {
 		WatchIntervalSeconds: 60,
 		ProjectsDir:          filepath.Join(home, ".claude", "projects"),
 		LearnWindowDays:      30,
+		CalibrateWithHumans:  true,
 		GateChecks:           []string{"go vet ./...", "go test ./..."},
 		Pricing:              defaultPricing(),
 		Integrations:         Integrations{JiraProject: "SCRUM", SlackChannel: ""},
@@ -117,6 +121,8 @@ func (c *Config) applyEnv() {
 			c.GateWaitSeconds = n
 		}
 	}
+	c.OpenRouterKey = os.Getenv("OPENROUTER_API_KEY")
+	c.OpenRouterModel = os.Getenv("OPENROUTER_MODEL")
 	if v := os.Getenv("SLACK_APPROVERS"); v != "" {
 		c.Approvers = nil
 		for _, a := range strings.Split(v, ",") {

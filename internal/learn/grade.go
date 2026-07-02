@@ -1,17 +1,17 @@
 package learn
 
 import (
-	"sort"
-
 	"github.com/phuc-nt/dandori/internal/store"
 )
 
 // Grade is a fleet-calibrated letter with its provenance.
 type Grade struct {
-	Letter       string
-	Percentile   float64 // agent's percentile within the fleet composite distribution
-	Uncalibrated bool    // true when fleet < minFleet → static bands used
-	FleetSize    int
+	Letter        string
+	Percentile    float64 // agent's percentile within the fleet composite distribution
+	Uncalibrated  bool    // true when fleet < minFleet → static bands used
+	FleetSize     int
+	Humans        int  // anonymous human baselines included in the distribution
+	LowConfidence bool // < 5 runs in window — treat the letter as tentative
 }
 
 // minFleet is the minimum number of scored entities for percentile
@@ -27,15 +27,21 @@ func GradeFor(composite float64, fleet []float64) Grade {
 		g.Letter = staticBand(composite)
 		return g
 	}
-	sorted := append([]float64(nil), fleet...)
-	sort.Float64s(sorted)
-	below := 0
-	for _, v := range sorted {
-		if v < composite {
+	// Mid-rank tie handling: an agent tied with others sits in the middle of
+	// its tie group. Without this, a fleet of equals all lands at p0 → F.
+	below, ties := 0, 0
+	for _, v := range fleet {
+		switch {
+		case v < composite:
 			below++
+		case v == composite:
+			ties++
 		}
 	}
-	g.Percentile = 100 * float64(below) / float64(len(sorted))
+	if ties > 0 {
+		ties-- // exclude self from the tie group
+	}
+	g.Percentile = 100 * (float64(below) + float64(ties)/2) / float64(len(fleet))
 	switch {
 	case g.Percentile >= 80:
 		g.Letter = "A"

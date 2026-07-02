@@ -3,6 +3,7 @@
   <table class="w-full text-sm">
     <thead class="bg-gray-100 text-left"><tr>
       <th class="p-2">Scope</th><th class="p-2">Target</th><th class="p-2 text-right">Spend (month)</th>
+      <th class="p-2 text-right" title="linear burn-rate projection to end of month">Projected EOM</th>
       <th class="p-2 text-right">Limit</th><th class="p-2 w-64">Usage</th><th class="p-2">Set limit</th>
     </tr></thead>
     <tbody>
@@ -11,6 +12,7 @@
         <td class="p-2">{{.ScopeType}}</td>
         <td class="p-2">{{if .ScopeID}}{{.ScopeID}}{{else}}—{{end}}</td>
         <td class="p-2 text-right">{{usd .SpendUSD}}</td>
+        <td class="p-2 text-right {{if and .LimitUSD (gt .ProjectedUSD .LimitUSD)}}text-red-600 font-semibold{{end}}">{{usd .ProjectedUSD}}</td>
         <td class="p-2 text-right">{{usd .LimitUSD}}</td>
         <td class="p-2">
           <div class="bg-gray-200 rounded h-3 overflow-hidden">
