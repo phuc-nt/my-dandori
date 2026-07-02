@@ -1,0 +1,58 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-1">Morning standup</h1>
+<p class="text-gray-500 mb-4">What your fleet did overnight — and what needs <span class="font-semibold">you</span> today.</p>
+
+<div class="grid md:grid-cols-3 gap-4 mb-6">
+  <div class="bg-white border rounded-lg p-4">
+    <div class="text-sm text-gray-500">Runs (24h)</div>
+    <a href="/runs" class="text-3xl font-bold text-blue-700 hover:underline">{{len .Runs}}</a>
+  </div>
+  <div class="bg-white border rounded-lg p-4">
+    <div class="text-sm text-gray-500">Waiting for approval</div>
+    <a href="/reviews" class="text-3xl font-bold {{if .Pending}}text-amber-600{{else}}text-green-600{{end}} hover:underline">{{len .Pending}}</a>
+  </div>
+  <div class="bg-white border rounded-lg p-4">
+    <div class="text-sm text-gray-500">Open flags</div>
+    <a href="/runs" class="text-3xl font-bold {{if .Flags}}text-red-600{{else}}text-green-600{{end}} hover:underline">{{len .Flags}}</a>
+  </div>
+</div>
+
+{{if .Pending}}
+<h2 class="text-lg font-semibold mb-2">Needs you now</h2>
+{{template "reviews_pending" .}}
+{{end}}
+
+<h2 class="text-lg font-semibold mt-6 mb-2">Budget health</h2>
+{{template "budgets_table" .}}
+
+<h2 class="text-lg font-semibold mt-6 mb-2">Last 24h runs</h2>
+<div class="bg-white border rounded-lg overflow-hidden">
+<table class="w-full text-sm">
+  <thead class="bg-gray-100 text-left"><tr>
+    <th class="p-2">Run</th><th class="p-2">Agent</th><th class="p-2">Project</th><th class="p-2">Task</th>
+    <th class="p-2">Status</th><th class="p-2 text-right">Cost</th><th class="p-2">Started</th><th class="p-2">Src</th>
+  </tr></thead>
+  {{template "runs_tbody" .}}
+</table>
+</div>
+
+<h2 class="text-lg font-semibold mt-6 mb-2">Fleet snapshot</h2>
+<div class="bg-white border rounded-lg p-4">
+  {{if .Board}}
+  <table class="w-full text-sm">
+    <thead class="text-left text-gray-500"><tr><th>Agent</th><th>Grade</th><th>Composite</th><th class="text-right">Cost</th></tr></thead>
+    <tbody>
+    {{range .Board}}
+      <tr class="border-t">
+        <td class="py-1"><a class="text-blue-600 hover:underline" href="/dash/agent/{{.AgentID}}">{{.AgentName}}</a></td>
+        <td class="py-1 font-bold">{{.Grade.Letter}}{{if .Grade.Uncalibrated}}<span class="text-xs text-gray-400" title="fleet too small for percentile calibration">*</span>{{end}}</td>
+        <td class="py-1">{{score .Composite}}</td>
+        <td class="py-1 text-right">{{usd .CostUSD}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<div class="text-gray-400">No agents scored yet.</div>{{end}}
+  <a href="/dash/org" class="text-blue-600 text-sm hover:underline">Full org dashboard →</a>
+</div>
+{{end}}

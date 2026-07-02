@@ -1,0 +1,36 @@
+{{define "runs_tbody"}}
+<tbody id="runs-tbody">
+  {{range .Runs}}
+  <tr class="border-b hover:bg-gray-100">
+    <td class="p-2"><a class="text-blue-600 hover:underline font-mono" href="/runs/{{.ID}}">{{short .ID}}</a></td>
+    <td class="p-2"><a class="hover:underline" href="/dash/agent/{{.AgentID}}">{{.AgentID}}</a></td>
+    <td class="p-2"><a class="hover:underline" href="/dash/project/{{.Project}}">{{.Project}}</a></td>
+    <td class="p-2">{{.TaskKey}}</td>
+    <td class="p-2 {{statusColor .Status}}">{{.Status}}</td>
+    <td class="p-2 text-right">{{usd .CostUSD}}</td>
+    <td class="p-2 text-xs text-gray-500">{{.StartedAt}}</td>
+    <td class="p-2 text-xs">{{.Source}}</td>
+  </tr>
+  {{else}}
+  <tr><td colspan="8" class="p-6 text-center text-gray-400">No runs yet — run <code>dandori init</code> in a project, then use Claude Code as usual.</td></tr>
+  {{end}}
+</tbody>
+{{end}}
+
+{{define "run_row_actions"}}
+<div class="flex gap-2">
+  {{if eq .Status "running"}}
+  <form method="post" action="/runs/{{.ID}}/kill" onsubmit="return confirm('Kill this run?')">
+    <button class="bg-red-600 text-white px-3 py-1 rounded text-sm">Kill run</button>
+  </form>
+  {{end}}
+  <form method="post" action="/runs/{{.ID}}/flag" class="flex gap-1">
+    <input name="reason" placeholder="reason" class="border rounded px-2 py-1 text-sm">
+    <button class="bg-amber-500 text-white px-3 py-1 rounded text-sm">Flag → Jira</button>
+  </form>
+  <form method="post" action="/runs/{{.ID}}/task-key" class="flex gap-1">
+    <input name="task_key" value="{{.TaskKey}}" placeholder="SCRUM-…" class="border rounded px-2 py-1 text-sm w-28">
+    <button class="bg-slate-600 text-white px-3 py-1 rounded text-sm">Set task</button>
+  </form>
+</div>
+{{end}}

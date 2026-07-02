@@ -1,0 +1,18 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-4">Project: {{.Project}}</h1>
+<div class="grid md:grid-cols-2 gap-4 mb-6">
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Runs</div>
+    <div class="text-3xl font-bold">{{len .Runs}}</div></div>
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Cost</div>
+    <div class="text-3xl font-bold">{{usd .Cost}}</div></div>
+</div>
+<div class="bg-white border rounded-lg overflow-hidden">
+<table class="w-full text-sm">
+  <thead class="bg-gray-100 text-left"><tr>
+    <th class="p-2">Run</th><th class="p-2">Agent</th><th class="p-2">Project</th><th class="p-2">Task</th>
+    <th class="p-2">Status</th><th class="p-2 text-right">Cost</th><th class="p-2">Started</th><th class="p-2">Src</th>
+  </tr></thead>
+  {{template "runs_tbody" .}}
+</table>
+</div>
+{{end}}

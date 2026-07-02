@@ -1,0 +1,31 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-1">Guardrail rules</h1>
+<p class="text-gray-500 mb-4"><b>block</b> denies outright · <b>gate</b> pauses for human approval. Enforced at the tool-call layer — agents cannot bypass them.</p>
+
+<div class="bg-white border rounded-lg overflow-hidden">
+<table class="w-full text-sm">
+  <thead class="bg-gray-100 text-left"><tr>
+    <th class="p-2">#</th><th class="p-2">Kind</th><th class="p-2">Pattern</th><th class="p-2">Description</th><th class="p-2">Enabled</th>
+  </tr></thead>
+  <tbody>
+  {{range .Rules}}
+    <tr class="border-t {{if not .Enabled}}opacity-50{{end}}">
+      <td class="p-2">{{.ID}}</td>
+      <td class="p-2"><span class="px-2 py-0.5 rounded text-xs {{if eq .Kind "block"}}bg-red-100 text-red-700{{else}}bg-amber-100 text-amber-700{{end}}">{{.Kind}}</span></td>
+      <td class="p-2 font-mono text-xs">{{.Pattern}}</td>
+      <td class="p-2">{{.Description}}</td>
+      <td class="p-2">
+        <form method="post" action="/rules/{{.ID}}/toggle">
+          <button class="{{if .Enabled}}bg-green-600{{else}}bg-gray-400{{end}} text-white px-3 py-1 rounded text-xs">
+            {{if .Enabled}}ON — disable{{else}}OFF — enable{{end}}
+          </button>
+        </form>
+      </td>
+    </tr>
+  {{else}}
+    <tr><td colspan="5" class="p-6 text-center text-gray-400">No rules.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

@@ -1,0 +1,41 @@
+{{define "content"}}
+<div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+  <div>
+    <h1 class="text-2xl font-bold font-mono">{{short .Run.ID}}</h1>
+    <div class="text-gray-500 text-sm">
+      agent <a class="text-blue-600 hover:underline" href="/dash/agent/{{.Run.AgentID}}">{{.Run.AgentID}}</a>
+      · project <a class="text-blue-600 hover:underline" href="/dash/project/{{.Run.Project}}">{{.Run.Project}}</a>
+      · <span class="{{statusColor .Run.Status}} font-semibold">{{.Run.Status}}</span>
+      · {{.Run.StartedAt}} → {{if .Run.EndedAt}}{{.Run.EndedAt}}{{else}}…{{end}}
+      · source {{.Run.Source}}
+    </div>
+  </div>
+  {{template "run_row_actions" .Run}}
+</div>
+
+<div class="grid md:grid-cols-4 gap-4 mb-6">
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Cost</div>
+    <div class="text-2xl font-bold">{{usd .Run.CostUSD}}</div>
+    <div class="text-xs text-gray-400">{{.Run.Model}}</div></div>
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Input tokens</div>
+    <div class="text-2xl font-bold">{{.Run.InputTokens}}</div></div>
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Output tokens</div>
+    <div class="text-2xl font-bold">{{.Run.OutputTokens}}</div></div>
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Task</div>
+    <div class="text-2xl font-bold">{{if .Run.TaskKey}}{{.Run.TaskKey}}{{else}}—{{end}}</div></div>
+</div>
+
+<h2 class="text-lg font-semibold mb-2">Timeline</h2>
+<div class="bg-white border rounded-lg divide-y">
+  {{range .Events}}
+  <div class="p-3 flex gap-3 text-sm {{if eq .Kind "guardrail_block"}}bg-red-50{{else if eq .Kind "permission_ask"}}bg-amber-50{{end}}">
+    <div class="text-gray-400 font-mono whitespace-nowrap">{{.TS}}</div>
+    <div class="font-semibold whitespace-nowrap">{{.Kind}}{{if .Tool}} · {{.Tool}}{{end}}</div>
+    {{if .OK}}<div class="{{if eq (deref .OK) 1}}text-green-600{{else}}text-red-600{{end}}">ok={{deref .OK}}</div>{{end}}
+    <div class="text-gray-600 truncate font-mono text-xs flex-1" title="event #{{.ID}}">{{.Payload}}</div>
+  </div>
+  {{else}}
+  <div class="p-6 text-center text-gray-400">No events captured for this run.</div>
+  {{end}}
+</div>
+{{end}}

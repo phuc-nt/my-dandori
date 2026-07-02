@@ -1,0 +1,25 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-1">Budgets</h1>
+<p class="text-gray-500 mb-4">Circuit breaker limits per scope. Changes apply to the very next tool call.</p>
+
+<div hx-get="/budgets" hx-trigger="every 10s" hx-target="#budgets-table" hx-swap="outerHTML">
+  {{template "budgets_table" .}}
+</div>
+
+<h2 class="text-lg font-semibold mt-6 mb-2">Add budget</h2>
+<form method="post" action="/budgets" class="bg-white border rounded-lg p-4 flex gap-2 items-end flex-wrap">
+  <label class="text-sm">Scope<br>
+    <select name="scope_type" class="border rounded px-2 py-1">
+      <option value="global">global</option><option value="agent">agent</option><option value="project">project</option>
+    </select></label>
+  <label class="text-sm">Target (agent id / project)<br>
+    <input name="scope_id" list="scope-targets" class="border rounded px-2 py-1" placeholder="empty for global"></label>
+  <datalist id="scope-targets">
+    {{range .Agents}}<option value="{{.}}"></option>{{end}}
+    {{range .Projects}}<option value="{{.}}"></option>{{end}}
+  </datalist>
+  <label class="text-sm">Monthly limit (USD)<br>
+    <input name="limit_usd" type="number" step="0.01" min="0" required class="border rounded px-2 py-1 w-32"></label>
+  <button class="bg-slate-700 text-white px-4 py-2 rounded">Set budget</button>
+</form>
+{{end}}

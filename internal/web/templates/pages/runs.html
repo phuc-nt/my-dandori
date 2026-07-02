@@ -1,0 +1,24 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-4">Runs</h1>
+<form class="flex gap-2 mb-4 flex-wrap"
+      hx-get="/runs" hx-target="#runs-tbody" hx-swap="outerHTML" hx-trigger="change, submit">
+  <input name="agent" placeholder="agent" value="{{.Q.Get "agent"}}" class="border rounded px-2 py-1 text-sm">
+  <input name="project" placeholder="project" value="{{.Q.Get "project"}}" class="border rounded px-2 py-1 text-sm">
+  <select name="status" class="border rounded px-2 py-1 text-sm">
+    <option value="">any status</option>
+    {{range $s := (list "running" "done" "failed" "killed")}}
+    <option value="{{$s}}" {{if eq ($.Q.Get "status") $s}}selected{{end}}>{{$s}}</option>
+    {{end}}
+  </select>
+  <button class="bg-slate-600 text-white px-3 py-1 rounded text-sm">Filter</button>
+</form>
+<div class="bg-white border rounded-lg overflow-hidden">
+<table class="w-full text-sm">
+  <thead class="bg-gray-100 text-left"><tr>
+    <th class="p-2">Run</th><th class="p-2">Agent</th><th class="p-2">Project</th><th class="p-2">Task</th>
+    <th class="p-2">Status</th><th class="p-2 text-right">Cost</th><th class="p-2">Started</th><th class="p-2">Src</th>
+  </tr></thead>
+  {{template "runs_tbody" .}}
+</table>
+</div>
+{{end}}

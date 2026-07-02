@@ -1,0 +1,44 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-1">Provenance explorer</h1>
+<p class="text-gray-500 mb-4">Every number traces back to raw data — same input, same output, no hidden thresholds.</p>
+
+<form class="flex gap-2 mb-6 items-end">
+  <label class="text-sm">Agent<br>
+    <select name="agent" class="border rounded px-2 py-1">
+      <option value="">choose…</option>
+      {{range .Agents}}<option value="{{.}}" {{if eq . $.Agent}}selected{{end}}>{{.}}</option>{{end}}
+    </select></label>
+  <label class="text-sm">Metric<br>
+    <select name="metric" class="border rounded px-2 py-1">
+      <option value="">choose…</option>
+      {{range .Metrics}}<option value="{{.}}" {{if eq . $.MetricName}}selected{{end}}>{{.}}</option>{{end}}
+    </select></label>
+  <button class="bg-slate-700 text-white px-4 py-2 rounded">Trace</button>
+</form>
+
+{{if .Metric}}
+<div class="bg-white border rounded-lg p-4 mb-4">
+  <div class="text-sm text-gray-500 capitalize">{{.Metric.Name}} — {{.Agent}}</div>
+  <div class="text-4xl font-black">{{score .Metric.Value}}</div>
+  <div class="mt-2 font-mono text-sm bg-gray-100 rounded p-2">{{.Metric.Formula}}</div>
+</div>
+<h2 class="text-lg font-semibold mb-2">Source rows ({{len .Rows}})</h2>
+<div class="bg-white border rounded-lg overflow-hidden">
+<table class="w-full text-sm">
+  <thead class="bg-gray-100 text-left"><tr><th class="p-2">Kind</th><th class="p-2">ID</th><th class="p-2">TS</th><th class="p-2">Summary</th></tr></thead>
+  <tbody>
+  {{range .Rows}}
+    <tr class="border-t">
+      <td class="p-2">{{.Kind}}</td>
+      <td class="p-2 font-mono">{{if eq .Kind "run"}}<a class="text-blue-600 hover:underline" href="/runs/{{.ID}}">{{short .ID}}</a>{{else}}{{.ID}}{{end}}</td>
+      <td class="p-2 text-xs text-gray-500">{{.TS}}</td>
+      <td class="p-2 font-mono text-xs">{{.Summary}}</td>
+    </tr>
+  {{else}}
+    <tr><td colspan="4" class="p-6 text-center text-gray-400">Value is neutral — no source rows in window.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+{{end}}

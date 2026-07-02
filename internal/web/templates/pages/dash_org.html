@@ -1,0 +1,52 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-4">Org dashboard <span class="text-sm text-gray-400 font-normal">({{.Window}}-day window)</span></h1>
+
+<div class="grid md:grid-cols-4 gap-4 mb-6">
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Total runs</div>
+    <a href="/runs" class="text-3xl font-bold hover:underline">{{.TotalRuns}}</a></div>
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Total cost</div>
+    <div class="text-3xl font-bold">{{usd .TotalCost}}</div></div>
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Useful spend</div>
+    <div class="text-3xl font-bold {{if lt .ROI.UsefulPct 70.0}}text-red-600{{else}}text-green-700{{end}}">{{pct .ROI.UsefulPct}}</div>
+    <div class="text-xs text-gray-400" title="{{.ROI.Formula}}">wasted {{usd .ROI.WastedUSD}} — hover for formula</div></div>
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Agents</div>
+    <div class="text-3xl font-bold">{{len .Board}}</div></div>
+</div>
+
+<div class="grid md:grid-cols-2 gap-4 mb-6">
+  <div class="bg-white border rounded-lg p-4"><h2 class="font-semibold mb-2">Cost trend (14d)</h2><canvas id="costChart" height="140"></canvas></div>
+  <div class="bg-white border rounded-lg p-4"><h2 class="font-semibold mb-2">Grade distribution</h2><canvas id="gradeChart" height="140"></canvas></div>
+</div>
+<script type="application/json" id="chart-data">{{.ChartJSON}}</script>
+
+<h2 class="text-lg font-semibold mb-2">Leaderboard</h2>
+<div class="bg-white border rounded-lg overflow-hidden">
+<table class="w-full text-sm">
+  <thead class="bg-gray-100 text-left"><tr>
+    <th class="p-2">#</th><th class="p-2">Agent</th><th class="p-2">Grade</th><th class="p-2">Composite</th>
+    <th class="p-2">Accept</th><th class="p-2">Success</th><th class="p-2">Autonomy</th><th class="p-2">Reliab.</th>
+    <th class="p-2 text-right">Runs</th><th class="p-2 text-right">Cost</th><th class="p-2 text-right">Useful</th><th class="p-2">Δ7d</th>
+  </tr></thead>
+  <tbody>
+  {{range $i, $r := .Board}}
+    <tr class="border-t hover:bg-gray-50">
+      <td class="p-2 text-gray-400">{{$i}}</td>
+      <td class="p-2"><a class="text-blue-600 hover:underline" href="/dash/agent/{{$r.AgentID}}">{{$r.AgentName}}</a></td>
+      <td class="p-2 font-bold">{{$r.Grade.Letter}}{{if $r.Grade.Uncalibrated}}<span class="text-xs text-gray-400" title="fleet < 5: static bands, not percentile">*</span>{{else}}<span class="text-xs text-gray-400"> p{{score $r.Grade.Percentile}}</span>{{end}}</td>
+      <td class="p-2">{{score $r.Composite}}</td>
+      <td class="p-2"><a class="hover:underline" title="{{$r.Metrics.Acceptance.Formula}}" href="/provenance?agent={{$r.AgentID}}&metric=acceptance">{{score $r.Metrics.Acceptance.Value}}</a></td>
+      <td class="p-2"><a class="hover:underline" title="{{$r.Metrics.Success.Formula}}" href="/provenance?agent={{$r.AgentID}}&metric=success">{{score $r.Metrics.Success.Value}}</a></td>
+      <td class="p-2"><a class="hover:underline" title="{{$r.Metrics.Autonomy.Formula}}" href="/provenance?agent={{$r.AgentID}}&metric=autonomy">{{score $r.Metrics.Autonomy.Value}}</a></td>
+      <td class="p-2"><a class="hover:underline" title="{{$r.Metrics.Reliability.Formula}}" href="/provenance?agent={{$r.AgentID}}&metric=reliability">{{score $r.Metrics.Reliability.Value}}</a></td>
+      <td class="p-2 text-right"><a class="hover:underline" href="/runs?agent={{$r.AgentID}}">{{$r.Runs}}</a></td>
+      <td class="p-2 text-right">{{usd $r.CostUSD}}</td>
+      <td class="p-2 text-right" title="{{$r.ROI.Formula}}">{{pct $r.ROI.UsefulPct}}</td>
+      <td class="p-2 {{if gt $r.TrendDelta 0.0}}text-green-600{{else if lt $r.TrendDelta 0.0}}text-red-600{{end}}">{{score $r.TrendDelta}}</td>
+    </tr>
+  {{else}}
+    <tr><td colspan="12" class="p-6 text-center text-gray-400">No agent activity in window.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

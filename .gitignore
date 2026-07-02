@@ -1,0 +1,20 @@
+# Secrets — NEVER commit real credentials
+.env
+.env.*
+!.env.example
+
+# Local agent runtime data (audit, dedup, approvals, checkpoints)
+.data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# OS / editor
+.DS_Store
+
+# Build artifact
+/dandori

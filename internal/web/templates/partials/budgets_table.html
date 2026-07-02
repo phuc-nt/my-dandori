@@ -1,0 +1,35 @@
+{{define "budgets_table"}}
+<div id="budgets-table" class="bg-white border rounded-lg overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-100 text-left"><tr>
+      <th class="p-2">Scope</th><th class="p-2">Target</th><th class="p-2 text-right">Spend (month)</th>
+      <th class="p-2 text-right">Limit</th><th class="p-2 w-64">Usage</th><th class="p-2">Set limit</th>
+    </tr></thead>
+    <tbody>
+      {{range .Budgets}}
+      <tr class="border-t">
+        <td class="p-2">{{.ScopeType}}</td>
+        <td class="p-2">{{if .ScopeID}}{{.ScopeID}}{{else}}—{{end}}</td>
+        <td class="p-2 text-right">{{usd .SpendUSD}}</td>
+        <td class="p-2 text-right">{{usd .LimitUSD}}</td>
+        <td class="p-2">
+          <div class="bg-gray-200 rounded h-3 overflow-hidden">
+            <div class="h-3 {{if ge .Pct 90.0}}bg-red-500{{else if ge .Pct 75.0}}bg-amber-500{{else}}bg-green-500{{end}}"
+                 style="width: {{if ge .Pct 100.0}}100{{else}}{{score .Pct}}{{end}}%"></div>
+          </div>
+          <span class="text-xs text-gray-500">{{pct .Pct}}</span>
+        </td>
+        <td class="p-2">
+          <form method="post" action="/budgets" class="flex gap-1">
+            <input type="hidden" name="scope_type" value="{{.ScopeType}}">
+            <input type="hidden" name="scope_id" value="{{.ScopeID}}">
+            <input name="limit_usd" value="{{.LimitUSD}}" class="border rounded px-2 py-1 w-24 text-sm">
+            <button class="bg-slate-600 text-white px-2 py-1 rounded text-sm">Save</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}

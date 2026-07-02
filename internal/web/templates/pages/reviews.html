@@ -1,0 +1,36 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-1">Review queue</h1>
+<p class="text-gray-500 mb-4">Agents waiting on a human decision. Approvals unblock the agent while it waits; rejections require a reason. Everything lands in the audit trail.</p>
+
+<div hx-get="/reviews" hx-trigger="every 3s" hx-target="#pending-list" hx-swap="outerHTML">
+  {{template "reviews_pending" .}}
+</div>
+
+<h2 class="text-lg font-semibold mt-8 mb-2">Decision history</h2>
+<div class="bg-white border rounded-lg overflow-hidden">
+<table class="w-full text-sm">
+  <thead class="bg-gray-100 text-left"><tr>
+    <th class="p-2">#</th><th class="p-2">Run</th><th class="p-2">Action</th><th class="p-2">Status</th>
+    <th class="p-2">Decided by</th><th class="p-2">Note</th><th class="p-2">Via</th><th class="p-2">When</th>
+  </tr></thead>
+  <tbody>
+  {{range .History}}
+    {{if ne .Status "pending"}}
+    <tr class="border-t">
+      <td class="p-2 font-mono">{{.ID}}</td>
+      <td class="p-2"><a class="text-blue-600 hover:underline font-mono" href="/runs/{{.RunID}}">{{short .RunID}}</a></td>
+      <td class="p-2">{{.Action}}</td>
+      <td class="p-2 {{statusColor .Status}} font-semibold">{{.Status}}</td>
+      <td class="p-2">{{.DecidedBy}}</td>
+      <td class="p-2">{{.Note}}</td>
+      <td class="p-2">{{.Channel}}</td>
+      <td class="p-2 text-xs text-gray-500">{{.DecidedAt}}</td>
+    </tr>
+    {{end}}
+  {{else}}
+    <tr><td colspan="8" class="p-6 text-center text-gray-400">No decisions yet.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

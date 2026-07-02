@@ -1,0 +1,38 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-1">Agent: {{.M.AgentName}}</h1>
+<p class="text-gray-500 mb-4">Performance review over the last {{.M.WindowDays}} days.</p>
+
+<div class="grid md:grid-cols-5 gap-4 mb-6">
+  <div class="bg-white border rounded-lg p-4 text-center">
+    <div class="text-5xl font-black">{{.Grade.Letter}}</div>
+    <div class="text-xs text-gray-500 mt-1">{{if .Grade.Uncalibrated}}static bands (fleet {{.Grade.FleetSize}} &lt; 5){{else}}percentile {{score .Grade.Percentile}} of fleet {{.Grade.FleetSize}}{{end}}</div>
+  </div>
+  {{range $m := (list .M.Acceptance .M.Success .M.Autonomy .M.Reliability)}}
+  <div class="bg-white border rounded-lg p-4">
+    <div class="text-sm text-gray-500 capitalize">{{$m.Name}}</div>
+    <a class="text-3xl font-bold hover:underline" title="{{$m.Formula}}"
+       href="/provenance?agent={{$.M.AgentID}}&metric={{$m.Name}}">{{score $m.Value}}</a>
+    <div class="text-xs text-gray-400 truncate" title="{{$m.Formula}}">{{$m.Formula}}</div>
+  </div>
+  {{end}}
+</div>
+
+<div class="grid md:grid-cols-2 gap-4 mb-6">
+  <div class="bg-white border rounded-lg p-4">
+    <h2 class="font-semibold mb-1">ROI</h2>
+    <div class="text-2xl font-bold">{{usd .M.CostUSD}} spent · <span class="{{if lt .ROI.UsefulPct 70.0}}text-red-600{{else}}text-green-700{{end}}">{{pct .ROI.UsefulPct}} useful</span></div>
+    <div class="text-sm text-gray-600 mt-2">{{.ROI.Formula}}</div>
+    <ul class="text-sm mt-2 space-y-1">
+      <li>Failed/killed: <b>{{usd .ROI.FailedUSD}}</b> ({{len .ROI.FailedRunIDs}} runs)</li>
+      <li>Open-flagged: <b>{{usd .ROI.FlaggedUSD}}</b> ({{len .ROI.FlaggedRunIDs}} runs)</li>
+      <li>Rejected-work share: <b>{{usd .ROI.RejectedUSD}}</b></li>
+    </ul>
+  </div>
+  <div class="bg-white border rounded-lg p-4">
+    <h2 class="font-semibold mb-2">Recent runs</h2>
+    <table class="w-full text-sm">
+      {{template "runs_tbody" .}}
+    </table>
+  </div>
+</div>
+{{end}}
