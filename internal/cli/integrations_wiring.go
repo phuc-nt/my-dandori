@@ -9,8 +9,10 @@ import (
 	"github.com/phuc-nt/dandori/internal/config"
 	"github.com/phuc-nt/dandori/internal/govern"
 	"github.com/phuc-nt/dandori/internal/integrations"
+	"github.com/phuc-nt/dandori/internal/integrations/confluence"
 	"github.com/phuc-nt/dandori/internal/integrations/jira"
 	"github.com/phuc-nt/dandori/internal/integrations/slack"
+	"github.com/phuc-nt/dandori/internal/learn"
 	"github.com/phuc-nt/dandori/internal/store"
 	"github.com/phuc-nt/dandori/internal/web"
 )
@@ -23,6 +25,15 @@ func wireIntegrations(cfg *config.Config, st *store.Store, srv *web.Server) {
 		if err := flagToJira(cfg, st, flagID); err != nil {
 			log.Println("flag→jira:", err)
 		}
+	}
+	if i := cfg.Integrations; i.AtlassianSite != "" && i.ConfluenceSpaceID != "" {
+		reporter := &confluence.Reporter{
+			St:      st,
+			Client:  confluence.New(i.AtlassianSite, i.AtlassianEmail, i.AtlassianToken),
+			Guard:   &integrations.Guard{Cfg: cfg, St: st},
+			SpaceID: i.ConfluenceSpaceID, Window: cfg.LearnWindowDays,
+		}
+		srv.ReportSink = func() (string, error) { return reporter.Post(cfg.UserName) }
 	}
 }
 
@@ -96,7 +107,7 @@ func slackWorker(ctx context.Context, cfg *config.Config, st *store.Store) {
 	guard := &integrations.Guard{Cfg: cfg, St: st}
 	alerter := &slack.Alerter{St: st, Client: client, Guard: guard, Channel: i.SlackChannel}
 	bridge := &slack.ApprovalBridge{St: st, Client: client, Guard: guard,
-		Channel: i.SlackChannel, ConsoleURL: "http://" + cfg.Listen}
+		Channel: i.SlackChannel, ConsoleURL: "http://" + cfg.Listen, Approvers: cfg.Approvers}
 	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
 	lastAlert := time.Time{}
@@ -125,7 +136,49 @@ func recoverLog(name string) {
 	}
 }
 
+// spikeWorker looks for per-agent daily cost anomalies every 10 minutes;
+// detected spikes become events the Slack alerter picks up.
+func spikeWorker(ctx context.Context, cfg *config.Config, st *store.Store) {
+	t := time.NewTicker(10 * time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			func() {
+				defer recoverLog("spike detector")
+				if spiked, err := learn.DetectSpikes(st); err != nil {
+					log.Println("spike detector:", err)
+				} else if len(spiked) > 0 {
+					log.Printf("cost spikes detected: %v", spiked)
+				}
+			}()
+		}
+	}
+}
+
+// approvalExpiryWorker flips stale pending approvals to expired every minute.
+func approvalExpiryWorker(ctx context.Context, cfg *config.Config, st *store.Store) {
+	eng := govern.NewEngine(cfg, st)
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			func() {
+				defer recoverLog("approval expiry")
+				eng.ExpireStale()
+			}()
+		}
+	}
+}
+
 func init() {
 	registerWorker(jiraSyncWorker)
 	registerWorker(slackWorker)
+	registerWorker(approvalExpiryWorker)
+	registerWorker(spikeWorker)
 }

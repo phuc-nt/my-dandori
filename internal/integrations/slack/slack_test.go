@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/phuc-nt/dandori/internal/config"
@@ -105,13 +106,47 @@ func TestApprovalReactionApproves(t *testing.T) {
 	b.Tick() // polls and approves
 	var status, by, note string
 	st.DB.QueryRow(`SELECT status, decided_by, decision_note FROM approvals WHERE id=1`).Scan(&status, &by, &note)
-	if status != "approved" || by != "Phuc N." || note != "via slack reaction" {
+	if status != "approved" || by != "Phuc N. (U123)" || note != "via slack reaction" {
 		t.Errorf("approval: %s by %q note %q", status, by, note)
 	}
 	var audits int
 	st.DB.QueryRow(`SELECT count(*) FROM audit_log WHERE action='approval_approved'`).Scan(&audits)
 	if audits != 1 {
 		t.Errorf("audit: %d", audits)
+	}
+}
+
+// Reactions from users outside the approvers whitelist must be ignored.
+func TestApproverWhitelist(t *testing.T) {
+	st, guard := liveEnv(t)
+	client, fake := newFake(t)
+	b := &ApprovalBridge{St: st, Client: client, Guard: guard, Channel: "C1",
+		ConsoleURL: "http://x", Approvers: []string{"U-BOSS"}}
+	testseed.Agent(t, st, "a1")
+	testseed.Run(t, st, "r1", "a1", "running", 0, 0)
+	st.DB.Exec(`INSERT INTO approvals(run_id, action, reason, requested_at) VALUES('r1','git push','gate', ?)`, store.Now())
+
+	b.Tick() // post
+	fake.reactions = []Reaction{{Name: "white_check_mark", Users: []string{"U-RANDO"}}}
+	b.Tick() // poll — U-RANDO not whitelisted
+	var status string
+	st.DB.QueryRow(`SELECT status FROM approvals WHERE id=1`).Scan(&status)
+	if status != "pending" {
+		t.Errorf("non-approver reaction must not decide: %s", status)
+	}
+
+	// Griefing guard: a non-approver reacting FIRST must not block a later
+	// whitelisted reaction on the same message.
+	fake.reactions = []Reaction{{Name: "white_check_mark", Users: []string{"U-RANDO", "U-BOSS"}}}
+	b.Tick()
+	st.DB.QueryRow(`SELECT status FROM approvals WHERE id=1`).Scan(&status)
+	if status != "approved" {
+		t.Errorf("whitelisted approver must decide despite earlier non-approver reaction: %s", status)
+	}
+	var by string
+	st.DB.QueryRow(`SELECT decided_by FROM approvals WHERE id=1`).Scan(&by)
+	if !strings.Contains(by, "U-BOSS") {
+		t.Errorf("decided_by must record the whitelisted user id: %q", by)
 	}
 }
 

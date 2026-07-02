@@ -20,22 +20,27 @@ type LeaderboardRow struct {
 }
 
 // Leaderboard evaluates every active agent, calibrates grades against the
-// fleet, and sorts by composite descending.
+// fleet, and sorts by composite descending. Each agent is Computed exactly
+// once for the main window — the metrics feed both the calibration
+// distribution and the display row (no N+1 recompute).
 func Leaderboard(st *store.Store, windowDays int) ([]LeaderboardRow, error) {
-	composites, err := FleetComposites(st, windowDays)
+	agentIDs, err := activeAgents(st, windowDays)
 	if err != nil {
 		return nil, err
 	}
-	fleet := make([]float64, 0, len(composites))
-	for _, v := range composites {
-		fleet = append(fleet, v)
-	}
-	rows := make([]LeaderboardRow, 0, len(composites))
-	for agentID := range composites {
-		m, err := Compute(st, agentID, windowDays)
+	metrics := make(map[string]*AgentMetrics, len(agentIDs))
+	fleet := make([]float64, 0, len(agentIDs))
+	for _, id := range agentIDs {
+		m, err := Compute(st, id, windowDays)
 		if err != nil {
 			return nil, err
 		}
+		metrics[id] = m
+		fleet = append(fleet, m.Composite)
+	}
+	rows := make([]LeaderboardRow, 0, len(agentIDs))
+	for _, agentID := range agentIDs {
+		m := metrics[agentID]
 		roi, err := ComputeROI(st, agentID, windowDays, m.Acceptance.Value)
 		if err != nil {
 			return nil, err

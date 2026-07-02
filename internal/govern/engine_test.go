@@ -10,7 +10,7 @@ import (
 	"github.com/phuc-nt/dandori/internal/store"
 )
 
-func testEngine(t *testing.T) *Engine {
+func testEngine(t testing.TB) *Engine {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "g.db"))
 	if err != nil {
@@ -22,7 +22,7 @@ func testEngine(t *testing.T) *Engine {
 	return NewEngine(cfg, st)
 }
 
-func seedRun(t *testing.T, e *Engine, id string, cost float64) {
+func seedRun(t testing.TB, e *Engine, id string, cost float64) {
 	t.Helper()
 	_, err := e.St.DB.Exec(`INSERT INTO agents(id, name, created_at) VALUES('a1','a1',?)
 		ON CONFLICT(name) DO NOTHING`, store.Now())

@@ -1,0 +1,25 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-4">Run comparison</h1>
+<div class="bg-white border rounded-lg overflow-x-auto">
+<table class="w-full text-sm">
+  <thead class="bg-gray-100 text-left">
+    <tr><th class="p-2">Field</th>{{range .Runs}}<th class="p-2"><a class="text-blue-600 hover:underline font-mono" href="/runs/{{.ID}}">{{short .ID}}</a></th>{{end}}</tr>
+  </thead>
+  <tbody>
+    <tr class="border-t"><td class="p-2 font-semibold">Agent</td>{{range .Runs}}<td class="p-2">{{.AgentID}}</td>{{end}}</tr>
+    <tr class="border-t"><td class="p-2 font-semibold">Status</td>{{range .Runs}}<td class="p-2 {{statusColor .Status}}">{{.Status}}</td>{{end}}</tr>
+    <tr class="border-t"><td class="p-2 font-semibold">Runtime</td>{{range .Runs}}<td class="p-2">{{.Runtime}}</td>{{end}}</tr>
+    <tr class="border-t"><td class="p-2 font-semibold">Task</td>{{range .Runs}}<td class="p-2">{{.TaskKey}}</td>{{end}}</tr>
+    <tr class="border-t"><td class="p-2 font-semibold">Cost</td>{{range .Runs}}<td class="p-2">{{usd .CostUSD}}</td>{{end}}</tr>
+    <tr class="border-t"><td class="p-2 font-semibold">Input tokens</td>{{range .Runs}}<td class="p-2">{{.InputTokens}}</td>{{end}}</tr>
+    <tr class="border-t"><td class="p-2 font-semibold">Output tokens</td>{{range .Runs}}<td class="p-2">{{.OutputTokens}}</td>{{end}}</tr>
+    <tr class="border-t"><td class="p-2 font-semibold">Lines ±</td>{{range .Runs}}<td class="p-2"><span class="text-green-600">+{{.LinesAdded}}</span>/<span class="text-red-600">−{{.LinesDeleted}}</span></td>{{end}}</tr>
+    <tr class="border-t"><td class="p-2 font-semibold">Tool calls</td>{{range .Stats}}<td class="p-2">{{.ToolCalls}}</td>{{end}}</tr>
+    <tr class="border-t"><td class="p-2 font-semibold">Tool errors</td>{{range .Stats}}<td class="p-2 {{if .ToolErrors}}text-red-600{{end}}">{{.ToolErrors}}</td>{{end}}</tr>
+    <tr class="border-t"><td class="p-2 font-semibold">Guardrail blocks</td>{{range .Stats}}<td class="p-2 {{if .Blocks}}text-red-600{{end}}">{{.Blocks}}</td>{{end}}</tr>
+    <tr class="border-t"><td class="p-2 font-semibold">Permission asks</td>{{range .Stats}}<td class="p-2 {{if .Asks}}text-amber-600{{end}}">{{.Asks}}</td>{{end}}</tr>
+    <tr class="border-t"><td class="p-2 font-semibold">Started</td>{{range .Runs}}<td class="p-2 text-xs">{{.StartedAt}}</td>{{end}}</tr>
+  </tbody>
+</table>
+</div>
+{{end}}

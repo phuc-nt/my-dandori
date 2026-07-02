@@ -69,6 +69,7 @@ type Issue struct {
 	Status   string
 	Assignee string
 	Labels   []string
+	Created  string
 	Updated  string
 }
 
@@ -84,6 +85,7 @@ type searchResponse struct {
 				DisplayName string `json:"displayName"`
 			} `json:"assignee"`
 			Labels  []string `json:"labels"`
+			Created string   `json:"created"`
 			Updated string   `json:"updated"`
 		} `json:"fields"`
 	} `json:"issues"`
@@ -95,7 +97,7 @@ func (c *Client) SearchIssues(project string) ([]Issue, error) {
 	q := url.Values{
 		"jql":        {fmt.Sprintf("project = %s ORDER BY updated DESC", project)},
 		"maxResults": {"100"},
-		"fields":     {"summary,status,assignee,labels,updated"},
+		"fields":     {"summary,status,assignee,labels,created,updated"},
 	}.Encode()
 	body, code, err := c.do("GET", "/rest/api/3/search/jql?"+q, nil)
 	if err != nil {
@@ -117,7 +119,7 @@ func (c *Client) SearchIssues(project string) ([]Issue, error) {
 	out := make([]Issue, 0, len(sr.Issues))
 	for _, it := range sr.Issues {
 		iss := Issue{Key: it.Key, Summary: it.Fields.Summary, Status: it.Fields.Status.Name,
-			Labels: it.Fields.Labels, Updated: it.Fields.Updated}
+			Labels: it.Fields.Labels, Created: it.Fields.Created, Updated: it.Fields.Updated}
 		if it.Fields.Assignee != nil {
 			iss.Assignee = it.Fields.Assignee.DisplayName
 		}

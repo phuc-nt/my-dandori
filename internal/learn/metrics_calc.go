@@ -9,8 +9,10 @@ import (
 
 const editTools = `'Write','Edit','NotebookEdit'`
 
-// acceptance (proxy): share of edit tool calls that were not rejected.
-// Rejected = edit tool_result with ok=0 or a guardrail block on an edit tool.
+// acceptance: share of edit tool calls whose work survived. Rejected =
+// (a) edit tool_result ok=0 / guardrail block on an edit tool, plus
+// (b) every edit belonging to a run whose commits were later reverted
+// (revert_detected events from git — a real signal, not a proxy).
 func acceptance(st *store.Store, agentID string, days int) (Metric, error) {
 	edits, err := eventIDs(st, agentID, days, `'tool_use'`, ` AND e.tool_name IN (`+editTools+`)`)
 	if err != nil {
@@ -21,13 +23,27 @@ func acceptance(st *store.Store, agentID string, days int) (Metric, error) {
 	if err != nil {
 		return Metric{}, err
 	}
+	revertedEdits, err := eventIDs(st, agentID, days, `'tool_use'`,
+		` AND e.tool_name IN (`+editTools+`) AND EXISTS (
+			SELECT 1 FROM events rv WHERE rv.run_id = e.run_id AND rv.kind = 'revert_detected')`)
+	if err != nil {
+		return Metric{}, err
+	}
+	rejectedSet := map[int64]bool{}
+	for _, id := range rejected {
+		rejectedSet[id] = true
+	}
+	for _, id := range revertedEdits {
+		rejectedSet[id] = true
+	}
 	m := Metric{Name: "acceptance", Value: 100, EventIDs: edits,
 		Formula: "no edit tool calls in window (neutral 100)"}
 	if len(edits) > 0 {
-		m.Value = 100 * (1 - float64(len(rejected))/float64(len(edits)))
-		m.Formula = fmt.Sprintf("100 × (1 − %d rejected / %d edits) — proxy: user/guardrail rejections; GitHub revert detection not included",
-			len(rejected), len(edits))
+		m.Value = 100 * (1 - float64(len(rejectedSet))/float64(len(edits)))
+		m.Formula = fmt.Sprintf("100 × (1 − %d rejected / %d edits) — rejected = %d user/guardrail rejections ∪ %d edits in git-reverted runs",
+			len(rejectedSet), len(edits), len(rejected), len(revertedEdits))
 		m.EventIDs = append(edits, rejected...)
+		m.EventIDs = append(m.EventIDs, revertedEdits...)
 	}
 	return m, nil
 }
@@ -80,12 +96,13 @@ func isDoneStatus(s string) bool {
 	return false
 }
 
-// autonomy: share of runs that finished without human intervention
-// (a permission ask or more than one user message).
+// autonomy: share of runs that finished without human intervention.
+// Intervention = a permission ask, or a user message sent MID-RUN (after the
+// agent already started working). The opening prompt does not count.
 func autonomy(st *store.Store, agentID string, days int) (Metric, error) {
 	rows, err := st.DB.Query(`SELECT r.id,
 			COALESCE((SELECT count(*) FROM events e WHERE e.run_id = r.id AND e.kind = 'permission_ask'), 0),
-			COALESCE((SELECT e.payload FROM events e WHERE e.run_id = r.id AND e.kind = 'user_msg'), '1')
+			COALESCE((SELECT e.payload FROM events e WHERE e.run_id = r.id AND e.kind = 'user_msg'), '0')
 		FROM runs r WHERE r.agent_id = ? AND r.started_at >= `+windowClause(days), agentID)
 	if err != nil {
 		return Metric{}, err
@@ -94,15 +111,15 @@ func autonomy(st *store.Store, agentID string, days int) (Metric, error) {
 	var total, intervened int
 	var ids []string
 	for rows.Next() {
-		var id, userMsgs string
+		var id, midRunMsgs string
 		var asks int
-		if err := rows.Scan(&id, &asks, &userMsgs); err != nil {
+		if err := rows.Scan(&id, &asks, &midRunMsgs); err != nil {
 			return Metric{}, err
 		}
 		total++
 		ids = append(ids, id)
-		n, _ := strconv.Atoi(userMsgs)
-		if asks > 0 || n > 1 {
+		n, _ := strconv.Atoi(midRunMsgs)
+		if asks > 0 || n > 0 {
 			intervened++
 		}
 	}
@@ -110,7 +127,7 @@ func autonomy(st *store.Store, agentID string, days int) (Metric, error) {
 		Formula: "no runs in window (neutral 100)"}
 	if total > 0 {
 		m.Value = 100 * (1 - float64(intervened)/float64(total))
-		m.Formula = fmt.Sprintf("100 × (1 − %d intervened / %d runs) — intervention = permission ask or >1 user message", intervened, total)
+		m.Formula = fmt.Sprintf("100 × (1 − %d intervened / %d runs) — intervention = permission ask or mid-run user message (opening prompt not counted)", intervened, total)
 	}
 	return m, rows.Err()
 }

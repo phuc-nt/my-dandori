@@ -8,6 +8,8 @@
       · <span class="{{statusColor .Run.Status}} font-semibold">{{.Run.Status}}</span>
       · {{.Run.StartedAt}} → {{if .Run.EndedAt}}{{.Run.EndedAt}}{{else}}…{{end}}
       · source {{.Run.Source}}
+      · <span class="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-xs">{{.Run.Runtime}}</span>
+      {{if or .Run.LinesAdded .Run.LinesDeleted}}· <span class="text-green-600">+{{.Run.LinesAdded}}</span>/<span class="text-red-600">−{{.Run.LinesDeleted}}</span> lines{{end}}
     </div>
   </div>
   {{template "run_row_actions" .Run}}

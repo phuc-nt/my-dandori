@@ -21,4 +21,12 @@
   {{template "runs_tbody" .}}
 </table>
 </div>
+
+<div class="flex items-center gap-3 mt-3 text-sm">
+  {{if gt .PageNum 0}}<a class="text-blue-600 hover:underline" href="/runs?page={{.PrevPage}}&agent={{.Q.Get "agent"}}&project={{.Q.Get "project"}}&status={{.Q.Get "status"}}">← Prev</a>{{end}}
+  <span class="text-gray-400">page {{.PageNum}}</span>
+  {{if .HasNext}}<a class="text-blue-600 hover:underline" href="/runs?page={{.NextPage}}&agent={{.Q.Get "agent"}}&project={{.Q.Get "project"}}&status={{.Q.Get "status"}}">Next →</a>{{end}}
+  <span class="flex-1"></span>
+  <span class="text-gray-400">Compare: mở <code>/runs/compare?ids=id1,id2</code> hoặc click 2 run rồi ghép id.</span>
+</div>
 {{end}}

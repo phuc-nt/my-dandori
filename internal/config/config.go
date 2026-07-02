@@ -17,9 +17,10 @@ type Budget struct {
 }
 
 type Integrations struct {
-	JiraProject  string `yaml:"jira_project"`
-	SlackChannel string `yaml:"slack_channel"`
-	GithubRepo   string `yaml:"github_repo"`
+	JiraProject       string `yaml:"jira_project"`
+	SlackChannel      string `yaml:"slack_channel"`
+	GithubRepo        string `yaml:"github_repo"`
+	ConfluenceSpaceID string `yaml:"confluence_space_id"`
 	// Secrets — filled from env only, never serialized back to YAML.
 	AtlassianSite  string `yaml:"-"`
 	AtlassianEmail string `yaml:"-"`
@@ -37,6 +38,8 @@ type Config struct {
 	AgentWriteDisabled   bool               `yaml:"-"`
 	Budget               Budget             `yaml:"budget"`
 	GateWaitSeconds      int                `yaml:"gate_wait_seconds"`
+	ApprovalTTLMinutes   int                `yaml:"approval_ttl_minutes"`
+	Approvers            []string           `yaml:"approvers"` // Slack user ids/names allowed to decide; empty = anyone
 	WatchIntervalSeconds int                `yaml:"watch_interval_seconds"`
 	ProjectsDir          string             `yaml:"projects_dir"`
 	LearnWindowDays      int                `yaml:"learn_window_days"`
@@ -54,6 +57,7 @@ func defaults() *Config {
 		DryRun:               true,
 		Budget:               Budget{GlobalMonthlyUSD: 50, WarnPcts: []int{50, 75, 90}},
 		GateWaitSeconds:      30,
+		ApprovalTTLMinutes:   60,
 		WatchIntervalSeconds: 60,
 		ProjectsDir:          filepath.Join(home, ".claude", "projects"),
 		LearnWindowDays:      30,
@@ -113,6 +117,14 @@ func (c *Config) applyEnv() {
 			c.GateWaitSeconds = n
 		}
 	}
+	if v := os.Getenv("SLACK_APPROVERS"); v != "" {
+		c.Approvers = nil
+		for _, a := range strings.Split(v, ",") {
+			if a = strings.TrimSpace(a); a != "" {
+				c.Approvers = append(c.Approvers, a)
+			}
+		}
+	}
 	i := &c.Integrations
 	i.AtlassianSite = os.Getenv("ATLASSIAN_SITE_NAME")
 	i.AtlassianEmail = os.Getenv("ATLASSIAN_USER_EMAIL")
@@ -130,6 +142,9 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("GITHUB_REPO"); v != "" {
 		i.GithubRepo = v
+	}
+	if v := os.Getenv("CONFLUENCE_SPACE_ID"); v != "" {
+		i.ConfluenceSpaceID = v
 	}
 }
 

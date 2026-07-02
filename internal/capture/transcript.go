@@ -15,14 +15,19 @@ type Usage struct {
 	CacheRead  int64
 	CacheWrite int64
 	FirstUser  string // first user prompt text (task-key attribution)
-	UserMsgs   int    // count of user turns (autonomy signal)
+	// MidRunMsgs counts user text messages that arrive AFTER the assistant
+	// has started working — mid-run steering, the autonomy signal. The
+	// opening prompt(s) before the first assistant turn are not counted.
+	MidRunMsgs int
 	CWD        string // cwd recorded in transcript lines, if any
 }
 
 type transcriptLine struct {
-	Type    string `json:"type"`
-	CWD     string `json:"cwd"`
-	Message struct {
+	Type        string `json:"type"`
+	CWD         string `json:"cwd"`
+	IsSidechain bool   `json:"isSidechain"`
+	IsMeta      bool   `json:"isMeta"`
+	Message     struct {
 		ID      string          `json:"id"`
 		Role    string          `json:"role"`
 		Model   string          `json:"model"`
@@ -48,6 +53,7 @@ func ParseTranscript(path string) (Usage, error) {
 	defer f.Close()
 
 	seen := map[string]bool{}
+	assistantStarted := false
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 1024*1024), 16*1024*1024)
 	for sc.Scan() {
@@ -60,6 +66,7 @@ func ParseTranscript(path string) (Usage, error) {
 		}
 		switch line.Type {
 		case "assistant":
+			assistantStarted = true
 			m := line.Message
 			if m.Model != "" {
 				u.Model = m.Model
@@ -73,13 +80,19 @@ func ParseTranscript(path string) (Usage, error) {
 			u.CacheRead += m.Usage.CacheRead
 			u.CacheWrite += m.Usage.CacheWrite
 		case "user":
+			// Sidechain (subagent) and meta lines are not human steering.
+			if line.IsSidechain || line.IsMeta {
+				continue
+			}
 			text := userText(line.Message.Content)
 			if text == "" {
 				continue
 			}
-			u.UserMsgs++
 			if u.FirstUser == "" {
 				u.FirstUser = text
+			}
+			if assistantStarted {
+				u.MidRunMsgs++
 			}
 		}
 	}

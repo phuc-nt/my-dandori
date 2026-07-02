@@ -3,6 +3,7 @@ package capture
 import (
 	"bytes"
 	"database/sql"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -52,10 +53,19 @@ func (g *Ingestor) AddEvent(runID, kind, toolName string, ok sql.NullInt64, payl
 	return res.LastInsertId()
 }
 
-// SessionStart registers the run when a Claude Code session begins.
+// SessionStart registers the run and snapshots the git state so Stop can
+// compute the session's code delta (hooks run as separate processes, so the
+// before-state is persisted in the run row + settings).
 func (g *Ingestor) SessionStart(in HookInput) error {
-	_, err := g.EnsureRun(in.SessionID, in.CWD, in.TranscriptPath, "hook")
-	return err
+	runID, err := g.EnsureRun(in.SessionID, in.CWD, in.TranscriptPath, "hook")
+	if err != nil {
+		return err
+	}
+	if gs := SnapshotGit(in.CWD); gs.IsRepo {
+		_, _ = g.St.DB.Exec(`UPDATE runs SET head_before = ? WHERE id = ? AND head_before IS NULL`, gs.Head, runID)
+		_ = g.St.SetSetting("gitdirty:"+runID, fmt.Sprintf("%d,%d", gs.Added, gs.Deleted))
+	}
+	return nil
 }
 
 // PreTool records a tool_use event and returns run and event ids for the
@@ -85,7 +95,8 @@ func (g *Ingestor) PostTool(in HookInput) error {
 	return g.maybeReconcile(runID, in.TranscriptPath)
 }
 
-// Stop marks the run finished and does a final usage reconcile.
+// Stop marks the run finished, records the session git delta and does a
+// final usage reconcile.
 func (g *Ingestor) Stop(in HookInput) error {
 	runID, err := g.EnsureRun(in.SessionID, in.CWD, in.TranscriptPath, "hook")
 	if err != nil {
@@ -95,7 +106,34 @@ func (g *Ingestor) Stop(in HookInput) error {
 		ended_at = ? WHERE id = ?`, store.Now(), runID); err != nil {
 		return err
 	}
+	g.recordGitDelta(runID, in.CWD)
+	// Session-scoped settings keys are no longer needed once the run ends.
+	_, _ = g.St.DB.Exec(`DELETE FROM settings WHERE key IN (?, ?)`,
+		"gitdirty:"+runID, "reconciled_at:"+runID)
 	return g.ReconcileUsage(runID, in.TranscriptPath)
+}
+
+// recordGitDelta computes the session's code volume from the SessionStart
+// snapshot (best-effort: capture is fail-open, git errors are ignored).
+func (g *Ingestor) recordGitDelta(runID, cwd string) {
+	after := SnapshotGit(cwd)
+	if !after.IsRepo {
+		return
+	}
+	var headBefore sql.NullString
+	_ = g.St.DB.QueryRow(`SELECT head_before FROM runs WHERE id = ?`, runID).Scan(&headBefore)
+	before := GitState{Head: headBefore.String, IsRepo: headBefore.Valid && headBefore.String != ""}
+	if dirty := g.St.Setting("gitdirty:" + runID); dirty != "" {
+		fmt.Sscanf(dirty, "%d,%d", &before.Added, &before.Deleted)
+	}
+	if !before.IsRepo {
+		// No start snapshot (older run / hook missed) — record HEAD only.
+		_, _ = g.St.DB.Exec(`UPDATE runs SET head_after = ? WHERE id = ?`, after.Head, runID)
+		return
+	}
+	added, deleted := SessionDelta(cwd, before, after)
+	_, _ = g.St.DB.Exec(`UPDATE runs SET head_after = ?, lines_added = ?, lines_deleted = ? WHERE id = ?`,
+		after.Head, added, deleted, runID)
 }
 
 // maybeReconcile throttles transcript reparsing to once per 10s per run —
@@ -132,11 +170,12 @@ func (g *Ingestor) ReconcileUsage(runID, transcriptPath string) error {
 	if err != nil {
 		return err
 	}
-	return g.recordUserMsgs(runID, u.UserMsgs)
+	return g.recordUserMsgs(runID, u.MidRunMsgs)
 }
 
-// recordUserMsgs keeps a single user_msg-count event per run up to date
-// (autonomy metric input; SET semantics like usage).
+// recordUserMsgs keeps a single user_msg-count event per run up to date.
+// The count is MID-RUN steering messages only (autonomy metric input;
+// SET semantics like usage).
 func (g *Ingestor) recordUserMsgs(runID string, count int) error {
 	payload := strconv.Itoa(count)
 	res, err := g.St.DB.Exec(`UPDATE events SET payload = ? WHERE run_id = ? AND kind = 'user_msg'`, payload, runID)

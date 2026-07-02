@@ -38,13 +38,14 @@ func (s *Server) handleDashOrg(w http.ResponseWriter, r *http.Request) {
 		totalRuns += row.Runs
 	}
 	fleetROI, _ := learn.ComputeROI(s.Store, "", s.Cfg.LearnWindowDays, avgAcceptance(board))
+	dora, _ := learn.ComputeDORALite(s.Store, s.Cfg.LearnWindowDays)
 	chart, _ := json.Marshal(map[string]any{
 		"labels": labels, "values": values, "dist": learn.GradeDistribution(board),
 	})
 	s.render(w, r, "dash_org", map[string]any{
 		"Page": "org", "KillOn": s.Store.Setting("kill_switch_global") == "1",
 		"Board": board, "TotalCost": totalCost, "TotalRuns": totalRuns,
-		"ROI": fleetROI, "ChartJSON": string(chart), "Window": s.Cfg.LearnWindowDays,
+		"ROI": fleetROI, "DORA": dora, "ChartJSON": string(chart), "Window": s.Cfg.LearnWindowDays,
 	})
 }
 

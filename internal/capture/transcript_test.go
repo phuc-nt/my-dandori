@@ -41,8 +41,10 @@ func TestParseTranscript(t *testing.T) {
 	if u.FirstUser != "Fix SCRUM-42 login bug" {
 		t.Errorf("first user: %q", u.FirstUser)
 	}
-	if u.UserMsgs != 2 { // tool_result block is not a user turn
-		t.Errorf("user msgs: %d", u.UserMsgs)
+	// "also update the docs" arrives after the assistant started → 1 mid-run
+	// steering message; the opening prompt is not counted.
+	if u.MidRunMsgs != 1 {
+		t.Errorf("mid-run msgs: %d, want 1", u.MidRunMsgs)
 	}
 	if u.CWD != "/work/proj" {
 		t.Errorf("cwd: %q", u.CWD)

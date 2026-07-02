@@ -1,0 +1,35 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-1">Cost spikes</h1>
+<p class="text-gray-500 mb-4">Anomalies = an agent spending &gt;3× its own 7-day median in one day. Click through to the runs behind the number.</p>
+
+<form class="flex gap-2 mb-4 items-end">
+  <label class="text-sm">Date<br><input type="date" name="date" value="{{.Date}}" class="border rounded px-2 py-1"></label>
+  <label class="text-sm">Agent (optional)<br><input name="agent" value="{{.Agent}}" class="border rounded px-2 py-1"></label>
+  <button class="bg-slate-700 text-white px-3 py-1 rounded">Explain</button>
+</form>
+
+<h2 class="text-lg font-semibold mb-2">Top runs on {{.Date}}{{if .Agent}} · {{.Agent}}{{end}}</h2>
+<div class="bg-white border rounded-lg overflow-hidden mb-6">
+<table class="w-full text-sm">
+  <thead class="bg-gray-100 text-left"><tr><th class="p-2">Run</th><th class="p-2">Agent</th><th class="p-2 text-right">Cost</th></tr></thead>
+  <tbody>
+  {{range .Contributors}}
+    <tr class="border-t"><td class="p-2"><a class="text-blue-600 hover:underline font-mono" href="/runs/{{.RunID}}">{{short .RunID}}</a></td>
+      <td class="p-2">{{.AgentID}}</td><td class="p-2 text-right">{{usd .CostUSD}}</td></tr>
+  {{else}}
+    <tr><td colspan="3" class="p-6 text-center text-gray-400">No runs on this date.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+<h2 class="text-lg font-semibold mb-2">Recent spike alerts</h2>
+<div class="bg-white border rounded-lg divide-y">
+  {{range .SpikeEvents}}
+  <div class="p-3 text-sm"><span class="text-gray-400 font-mono">{{.TS}}</span> · <b>{{.Agent}}</b> — {{.Detail}}
+    <a class="text-blue-600 hover:underline" href="/spikes?agent={{.Agent}}">explain →</a></div>
+  {{else}}
+  <div class="p-6 text-center text-gray-400">No spikes detected. 📉</div>
+  {{end}}
+</div>
+{{end}}

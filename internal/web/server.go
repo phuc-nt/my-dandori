@@ -21,6 +21,9 @@ type Server struct {
 	// FlagSink, when set by the integrations wiring, receives new flag ids
 	// (flag → Jira ticket). Nil = no external leg.
 	FlagSink func(flagID int64)
+	// ReportSink publishes the fleet report to Confluence when wired.
+	// Returns page id, "dry-run", or "" (deduped today).
+	ReportSink func() (string, error)
 
 	mux  *chi.Mux
 	tmpl *renderer
@@ -51,7 +54,7 @@ func New(cfg *config.Config, st *store.Store, templatesDir ...string) (*Server, 
 func (s *Server) originGuard(next http.Handler) http.Handler {
 	_, port, _ := net.SplitHostPort(s.Cfg.Listen)
 	allowed := map[string]bool{
-		s.Cfg.Listen:       true,
+		s.Cfg.Listen:        true,
 		"localhost:" + port: true,
 		"127.0.0.1:" + port: true,
 	}
@@ -85,6 +88,8 @@ func (s *Server) routes() {
 	s.mux.Get("/dash/agent/{agent}", s.handleDashAgent)
 
 	s.mux.Get("/runs", s.handleRuns)
+	s.mux.Get("/runs/compare", s.handleRunCompare)
+	s.mux.Get("/spikes", s.handleSpikes)
 	s.mux.Get("/runs/{id}", s.handleRunDetail)
 	s.mux.Post("/runs/{id}/kill", s.handleRunKill)
 	s.mux.Post("/runs/{id}/task-key", s.handleRunTaskKey)
@@ -101,6 +106,10 @@ func (s *Server) routes() {
 	s.mux.Post("/rules/{id}/toggle", s.handleRuleToggle)
 
 	s.mux.Post("/api/kill", s.handleGlobalKill)
+	// POST: the export appends an audit entry (side effect) — GET would let a
+	// drive-by <img src> spam the append-only chain past the origin guard.
+	s.mux.Post("/export/compliance", s.handleComplianceExport)
+	s.mux.Post("/reports/confluence", s.handleConfluenceReport)
 }
 
 func (s *Server) Handler() http.Handler { return s.mux }

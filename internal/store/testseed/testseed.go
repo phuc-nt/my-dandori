@@ -14,7 +14,7 @@ func ts(daysAgo int) string {
 }
 
 // Agent inserts an agent (id == name slug for simplicity).
-func Agent(t *testing.T, st *store.Store, id string) {
+func Agent(t testing.TB, st *store.Store, id string) {
 	t.Helper()
 	if _, err := st.DB.Exec(`INSERT INTO agents(id, name, created_at) VALUES(?, ?, ?)
 		ON CONFLICT(name) DO NOTHING`, id, id, ts(30)); err != nil {
@@ -23,7 +23,7 @@ func Agent(t *testing.T, st *store.Store, id string) {
 }
 
 // Run inserts a run for an agent.
-func Run(t *testing.T, st *store.Store, id, agentID, status string, daysAgo int, cost float64) {
+func Run(t testing.TB, st *store.Store, id, agentID, status string, daysAgo int, cost float64) {
 	t.Helper()
 	if _, err := st.DB.Exec(`INSERT INTO runs(id, session_id, agent_id, project, status, started_at, ended_at, cost_usd)
 		VALUES(?, ?, ?, 'proj', ?, ?, ?, ?)`,
@@ -33,7 +33,7 @@ func Run(t *testing.T, st *store.Store, id, agentID, status string, daysAgo int,
 }
 
 // Event inserts an event on a run. ok: -1 = NULL.
-func Event(t *testing.T, st *store.Store, runID, kind, tool string, ok int, payload string) {
+func Event(t testing.TB, st *store.Store, runID, kind, tool string, ok int, payload string) {
 	t.Helper()
 	var okVal any
 	if ok >= 0 {
@@ -46,7 +46,7 @@ func Event(t *testing.T, st *store.Store, runID, kind, tool string, ok int, payl
 }
 
 // Flag opens a flag on a run.
-func Flag(t *testing.T, st *store.Store, runID, reason string) {
+func Flag(t testing.TB, st *store.Store, runID, reason string) {
 	t.Helper()
 	if _, err := st.DB.Exec(`INSERT INTO flags(run_id, reason, created_at) VALUES(?, ?, ?)`,
 		runID, reason, ts(0)); err != nil {
@@ -55,7 +55,7 @@ func Flag(t *testing.T, st *store.Store, runID, reason string) {
 }
 
 // WorkItem upserts a jira/github work item.
-func WorkItem(t *testing.T, st *store.Store, source, key, status string) {
+func WorkItem(t testing.TB, st *store.Store, source, key, status string) {
 	t.Helper()
 	if _, err := st.DB.Exec(`INSERT INTO work_items(source, key, title, status, updated_at)
 		VALUES(?, ?, ?, ?, ?) ON CONFLICT(source, key) DO UPDATE SET status = excluded.status`,

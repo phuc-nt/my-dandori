@@ -18,10 +18,10 @@ import (
 var hookCmd = &cobra.Command{
 	Use:       "hook [session-start|pre-tool|post-tool|stop]",
 	Short:     "Claude Code hook entrypoint (reads event JSON on stdin)",
-	Args:      cobra.ExactArgs(1),
+	Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
 	ValidArgs: []string{"session-start", "pre-tool", "post-tool", "stop"},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		raw, err := io.ReadAll(os.Stdin)
+		raw, err := io.ReadAll(cmd.InOrStdin())
 		if err != nil {
 			return logAndAllow(err)
 		}

@@ -65,11 +65,10 @@ func staticBand(v float64) string {
 	return "F"
 }
 
-// FleetComposites computes composite scores for every agent with runs in the
-// window — the calibration population.
-func FleetComposites(st *store.Store, windowDays int) (map[string]float64, error) {
+// activeAgents lists agents with runs in the window (calibration population).
+func activeAgents(st *store.Store, windowDays int) ([]string, error) {
 	rows, err := st.DB.Query(`SELECT DISTINCT agent_id FROM runs
-		WHERE agent_id IS NOT NULL AND started_at >= ` + windowClause(windowDays))
+		WHERE agent_id IS NOT NULL AND started_at >= ` + windowClause(windowDays) + ` ORDER BY agent_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +81,15 @@ func FleetComposites(st *store.Store, windowDays int) (map[string]float64, error
 		}
 		ids = append(ids, id)
 	}
-	if err := rows.Err(); err != nil {
+	return ids, rows.Err()
+}
+
+// FleetComposites computes composite scores for every active agent — the
+// calibration population (used by the agent detail page; the leaderboard
+// computes the same thing in a single pass instead).
+func FleetComposites(st *store.Store, windowDays int) (map[string]float64, error) {
+	ids, err := activeAgents(st, windowDays)
+	if err != nil {
 		return nil, err
 	}
 	out := map[string]float64{}

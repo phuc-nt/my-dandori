@@ -64,6 +64,26 @@ Chi tiết: `plans/reports/e2e-live-260702-dandori-mvp-report.md`. Tóm tắt: l
 
 Code review độc lập: verdict **approve-with-fixes** — 0 CRITICAL. Đã fix ngay: **H1** audit hash-chain race giữa process (DSN `_txlock=immediate` + test 2-connection concurrent); **H2** Host/Origin guard trên console (chặn DNS-rebinding + cross-origin POST vào approval/kill switch — console không auth, bind localhost, guard này là trust boundary); **M1** lỗi ghi audit từ handler giờ log to; **M3** checkKill fail-close khi không đọc được state. Còn mở (cần quyết định sản phẩm): gate approval retry tạo pending mới & không tự expire; Slack reaction chưa whitelist người duyệt; leaderboard N+1 (chấp nhận quy mô nội bộ). Test/race/E2E xanh lại sau fix. Report: `plans/reports/from-code-reviewer-to-controller-260702-dandori-mvp-review-report.md`.
 
+## v2 (260702, plan `260702-1117`) — surpass legacy
+
+Đóng mọi gap mà 2 bản cũ còn thắng:
+
+- **Approval lifecycle:** gate retry tái dùng pending (không spam queue); TTL 60' → `expired` (worker + lazy); Slack approver **whitelist** (`approvers` config / `SLACK_APPROVERS` env; rỗng = ai cũng duyệt, có cảnh báo).
+- **Autonomy đo lại:** chỉ tính can thiệp GIỮA phiên (user msg sau lượt assistant đầu); prompt mở đầu không tính.
+- **Compliance export** (`dandori export compliance`, `/export/compliance`, JSON/CSV): bundle audit chain + verify + approvals + flags + runs; bản thân export cũng ghi audit.
+- **Multi-runtime:** `dandori wrap -- <cmd>` (fork/exec, passthrough IO, exit code giữ nguyên, git delta, adapter usage claude/codex/generic — không bịa số). Kill switch chặn cả wrap. Hooks vẫn là đường chính cho Claude Code (có guardrail per-tool-call; wrap thì không — giới hạn ghi rõ).
+- **Git delta per run:** SessionStart snapshot HEAD+dirty → Stop tính `lines_added/deleted` + `head_before/after` → nền cho attribution & revert detection.
+- **GitHub intelligence:** sync PR đầy đủ (created/merged/body) + map revert (`Reverts #N`); **AI-CFR** = reverted/merged (revert PR loại khỏi mẫu số); **PR cycle p50/p75**; `dandori sync reverts` quét `git revert` local map về run → event `revert_detected` → **acceptance giờ gồm tín hiệu revert thật** (formula nêu rõ 2 nguồn).
+- **Attribution:** `dandori attribution` + số liệu ±lines/%reverted per agent.
+- **Confluence 2 chiều:** `context show` (đọc page → text), `report confluence` + nút console (storage HTML: leaderboard/ROI/CFR/flags; dedup ngày; DRY_RUN guard). E2E live: page **3375105** tạo thật trong space MPM.
+- **Analytics console:** spike detection (>3× median 7d, dedup/ngày, đẩy Slack) + trang `/spikes` explain; **DORA-lite** panel (lead time Jira, CFR, PR cycle; deploy freq = "n/a" trung thực); **run compare** `/runs/compare?ids=`; pagination runs.
+- **Perf:** leaderboard 1-pass (hết N+1). Benchmark (M4 Max): `EvaluateAllow` **82µs/op** (mục tiêu <5ms), `Leaderboard` 50 agents × 1.000 runs **119ms** (mục tiêu <300ms).
+- **Test depth:** coverage per package: govern 84 · integrations 100 · ghub 87.5 · learn 79 · jira/slack/confluence 77–79 · config 76 · store 71 · web ~70 · cli 61 · capture 63. Race clean.
+
+### Review v2 (DONE_WITH_CONCERNS → đã fix)
+
+2 HIGH + 7 MEDIUM đã xử lý trong cùng phiên: whitelist Slack chỉ match **user ID** (display name giả được) + quét MỌI reaction thay vì cái đầu tiên (chống griefing); approval **consume-once** cưỡng chế (N waiter chung 1 approval → chỉ 1 được allow); wrap fix misattribution FK + ignore SIGINT để luôn finalize run; compliance export **redact secret** (Bearer/xox/ATATT/sk-/ghp_) + CSV chống formula-injection + route đổi POST (side-effect audit); CFR chỉ tính revert PR đã MERGE + bỏ ref cross-repo; revert scan lọc theo cwd + prefetch dedup + guard hash regex; percentile nearest-rank; compare cap 5 ids; MidRunMsgs bỏ dòng sidechain/meta của subagent; dọn settings key khi run kết thúc.
+
 ## Giới hạn đã biết / [Sau]
 
 - Tailwind + HTMX + Chart.js qua CDN — cần mạng lần đầu; có CSS fallback tối giản.

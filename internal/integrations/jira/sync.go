@@ -1,6 +1,8 @@
 package jira
 
 import (
+	"encoding/json"
+
 	"github.com/phuc-nt/dandori/internal/store"
 )
 
@@ -19,12 +21,13 @@ func SyncIssues(st *store.Store, c *Client, project string) (int, error) {
 				isAgent = 1
 			}
 		}
-		if _, err := st.DB.Exec(`INSERT INTO work_items(source, key, title, status, assignee, is_agent, project, updated_at)
-			VALUES('jira', ?, ?, ?, ?, ?, ?, ?)
+		payload, _ := json.Marshal(map[string]string{"created": is.Created, "updated": is.Updated})
+		if _, err := st.DB.Exec(`INSERT INTO work_items(source, key, title, status, assignee, is_agent, project, updated_at, payload)
+			VALUES('jira', ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(source, key) DO UPDATE SET
 				title = excluded.title, status = excluded.status, assignee = excluded.assignee,
-				is_agent = excluded.is_agent, updated_at = excluded.updated_at`,
-			is.Key, is.Summary, is.Status, is.Assignee, isAgent, project, is.Updated); err != nil {
+				is_agent = excluded.is_agent, updated_at = excluded.updated_at, payload = excluded.payload`,
+			is.Key, is.Summary, is.Status, is.Assignee, isAgent, project, is.Updated, string(payload)); err != nil {
 			return 0, err
 		}
 	}

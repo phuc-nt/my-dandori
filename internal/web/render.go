@@ -18,7 +18,7 @@ var uiFS embed.FS
 // partials so fragments can be rendered directly by name.
 var pageNames = []string{
 	"standup", "dash_org", "dash_project", "dash_agent",
-	"runs", "run_detail", "reviews", "budgets", "provenance", "rules",
+	"runs", "run_detail", "run_compare", "reviews", "budgets", "provenance", "rules", "spikes",
 }
 
 type renderer struct {

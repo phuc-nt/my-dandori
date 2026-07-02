@@ -10,9 +10,10 @@ import (
 // RunRow is a run as displayed in lists and timelines.
 type RunRow struct {
 	ID, SessionID, AgentID, Project, TaskKey, Status, Model string
-	StartedAt, EndedAt, Source                              string
+	StartedAt, EndedAt, Source, Runtime                     string
 	CostUSD                                                 float64
 	InputTokens, OutputTokens                               int64
+	LinesAdded, LinesDeleted                                int64
 }
 
 // EventRow is one timeline entry on the run detail page.
@@ -57,8 +58,9 @@ const listCap = 200 // hard cap for list queries (UI pages, no pagination yet)
 
 func (s *Server) queryRuns(where string, args ...any) ([]RunRow, error) {
 	q := `SELECT id, session_id, COALESCE(agent_id,''), COALESCE(project,''), COALESCE(task_key,''),
-		status, COALESCE(model,''), COALESCE(started_at,''), COALESCE(ended_at,''), source,
-		cost_usd, input_tokens, output_tokens FROM runs ` + where + ` ORDER BY started_at DESC LIMIT ?`
+		status, COALESCE(model,''), COALESCE(started_at,''), COALESCE(ended_at,''), source, runtime,
+		cost_usd, input_tokens, output_tokens, lines_added, lines_deleted
+		FROM runs ` + where + ` ORDER BY started_at DESC LIMIT ?`
 	rows, err := s.Store.DB.Query(q, append(args, listCap)...)
 	if err != nil {
 		return nil, err
@@ -68,7 +70,8 @@ func (s *Server) queryRuns(where string, args ...any) ([]RunRow, error) {
 	for rows.Next() {
 		var r RunRow
 		if err := rows.Scan(&r.ID, &r.SessionID, &r.AgentID, &r.Project, &r.TaskKey, &r.Status,
-			&r.Model, &r.StartedAt, &r.EndedAt, &r.Source, &r.CostUSD, &r.InputTokens, &r.OutputTokens); err != nil {
+			&r.Model, &r.StartedAt, &r.EndedAt, &r.Source, &r.Runtime,
+			&r.CostUSD, &r.InputTokens, &r.OutputTokens, &r.LinesAdded, &r.LinesDeleted); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

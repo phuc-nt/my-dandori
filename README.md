@@ -41,7 +41,12 @@ Claude Code ──PreToolUse──▶ dandori hook pre-tool
 | `dandori kill <session>` / `--all` / `--off` | Kill switch |
 | `dandori audit verify` | Kiểm tra hash-chain audit |
 | `dandori gate --checks "go test ./..."` | Quality gate độc lập (G7) |
-| `dandori sync jira\|github` | Kéo work items vào unified schema |
+| `dandori sync jira\|github\|reverts` | Kéo work items / quét git revert map về run |
+| `dandori wrap [--agent X] -- <cmd>` | Chạy MỌI CLI agent (codex, aider…) dưới capture |
+| `dandori attribution` | ±lines code per agent + tỉ lệ bị revert |
+| `dandori export compliance [--format csv]` | Bundle audit chain + verify cho auditor/SIEM |
+| `dandori report confluence` | Post fleet report lên Confluence (DRY_RUN guard) |
+| `dandori context show --confluence <id>` | Đọc page Confluence thành text |
 
 ## Console (http://127.0.0.1:4777)
 

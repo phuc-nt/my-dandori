@@ -2,6 +2,7 @@ package govern
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -29,7 +30,8 @@ func (e *Engine) checkGate(ctx context.Context, tc ToolCall, rules []Rule) (Deci
 		action = tc.ToolName + " " + tc.Paths[0]
 	}
 	reason := fmt.Sprintf("%s (rule #%d)", gated.Description, gated.ID)
-	id, err := e.CreateApproval(tc.RunID, action, reason)
+	e.expireStale()
+	id, err := e.findOrCreateApproval(tc.RunID, action, reason)
 	if err != nil {
 		return Decision{Deny, "[dandori G4] internal error creating approval: " + err.Error()}, true
 	}
@@ -37,7 +39,11 @@ func (e *Engine) checkGate(ctx context.Context, tc ToolCall, rules []Rule) (Deci
 	status, decidedBy := e.waitDecision(ctx, id, time.Duration(e.Cfg.GateWaitSeconds)*time.Second)
 	switch status {
 	case "approved":
-		e.consume(id)
+		// Single-use: with pending-reuse, N concurrent waiters can share one
+		// approval — only the one that consumes it proceeds.
+		if !e.consume(id) {
+			return Decision{Deny, fmt.Sprintf("[dandori G4] approval #%d was already consumed by another call — request approval again", id)}, true
+		}
 		return Decision{Allow, fmt.Sprintf("approval #%d granted by %s", id, decidedBy)}, true
 	case "rejected":
 		return Decision{Deny, fmt.Sprintf("[dandori G4] approval #%d REJECTED by %s — do not retry this action", id, decidedBy)}, true
@@ -56,6 +62,44 @@ func (e *Engine) CreateApproval(runID, action, reason string) (int64, error) {
 	}
 	return res.LastInsertId()
 }
+
+// findOrCreateApproval reuses an existing pending approval for the same
+// run+action (agent retries after a timeout deny must not spam the queue).
+func (e *Engine) findOrCreateApproval(runID, action, reason string) (int64, error) {
+	var id int64
+	err := e.St.DB.QueryRow(`SELECT id FROM approvals
+		WHERE run_id = ? AND action = ? AND status = 'pending'
+		ORDER BY id DESC LIMIT 1`, runID, action).Scan(&id)
+	switch {
+	case err == nil:
+		return id, nil
+	case err == sql.ErrNoRows:
+		return e.CreateApproval(runID, action, reason)
+	default:
+		return 0, err // transient DB error must not spawn duplicates
+	}
+}
+
+// expireStale flips pending approvals older than the TTL to expired.
+// Called lazily at gate time and periodically by the serve worker.
+func (e *Engine) expireStale() {
+	ttl := e.Cfg.ApprovalTTLMinutes
+	if ttl <= 0 {
+		return
+	}
+	cutoff := time.Now().UTC().Add(-time.Duration(ttl) * time.Minute).Format(time.RFC3339)
+	res, err := e.St.DB.Exec(`UPDATE approvals SET status = 'expired', decided_at = ?
+		WHERE status = 'pending' AND requested_at < ?`, store.Now(), cutoff)
+	if err != nil {
+		return
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		_, _ = e.Audit.Append("approvals_expired", "gate", fmt.Sprintf("%d pending approval(s) past %dm TTL", n, ttl))
+	}
+}
+
+// ExpireStale is the exported entrypoint for the serve worker.
+func (e *Engine) ExpireStale() { e.expireStale() }
 
 // waitDecision polls the approval row every 2s until decided, ctx done, or timeout.
 func (e *Engine) waitDecision(ctx context.Context, id int64, timeout time.Duration) (status, decidedBy string) {
@@ -79,10 +123,15 @@ func (e *Engine) waitDecision(ctx context.Context, id int64, timeout time.Durati
 	}
 }
 
-// consume marks an approved approval as used so it cannot authorize twice.
-func (e *Engine) consume(id int64) {
-	_, _ = e.St.DB.Exec(`UPDATE approvals SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL`,
+// consume marks an approved approval as used; exactly one caller wins.
+func (e *Engine) consume(id int64) bool {
+	res, err := e.St.DB.Exec(`UPDATE approvals SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL`,
 		store.Now(), id)
+	if err != nil {
+		return false // fail-closed: cannot prove single use → deny
+	}
+	n, _ := res.RowsAffected()
+	return n == 1
 }
 
 // Decide resolves a pending approval (used by web console and Slack poller).

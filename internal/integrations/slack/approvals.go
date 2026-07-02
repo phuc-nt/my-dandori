@@ -18,6 +18,10 @@ type ApprovalBridge struct {
 	Guard      *integrations.Guard
 	Channel    string
 	ConsoleURL string
+	// Approvers whitelists who may decide via reaction — Slack user IDs only
+	// (display names are self-settable and spoofable). Empty = anyone in the
+	// channel (single-user default; documented risk).
+	Approvers []string
 }
 
 // Tick posts new pending approvals and polls reactions on posted ones.
@@ -98,31 +102,54 @@ func (b *ApprovalBridge) pollReactions() error {
 		if err != nil {
 			return err
 		}
-		if verdict, user, ok := firstVerdict(reactions); ok {
-			actor := b.Client.UserName(user)
-			won, err := govern.Decide(b.St, r.id, verdict, actor, "via slack reaction")
-			if err != nil {
-				return err
-			}
-			if won {
-				log.Printf("approval #%d %s by %s via slack", r.id, map[bool]string{true: "approved", false: "rejected"}[verdict], actor)
-			}
+		// Scan ALL verdict reactions × ALL reacting users and take the first
+		// whitelisted one — a non-approver reacting first must not block the
+		// queue (griefing), and display names are self-settable so the
+		// whitelist matches Slack user IDs ONLY.
+		verdict, user, ok := firstAllowedVerdict(reactions, b.Approvers)
+		if !ok {
+			continue
+		}
+		actor := b.Client.UserName(user)
+		won, err := govern.Decide(b.St, r.id, verdict, actor+" ("+user+")", "via slack reaction")
+		if err != nil {
+			return err
+		}
+		if won {
+			log.Printf("approval #%d %s by %s via slack", r.id, map[bool]string{true: "approved", false: "rejected"}[verdict], actor)
 		}
 	}
 	return nil
 }
 
-// firstVerdict finds the first ✅ (approve) or ❌ (reject) reaction.
-func firstVerdict(reactions []Reaction) (approve bool, userID string, ok bool) {
-	for _, re := range reactions {
-		if len(re.Users) == 0 {
-			continue
+// firstAllowedVerdict finds the first ✅/❌ reaction from a whitelisted user
+// id. Empty whitelist = anyone (single-user default, documented risk).
+func firstAllowedVerdict(reactions []Reaction, approvers []string) (approve bool, userID string, ok bool) {
+	allowed := func(id string) bool {
+		if len(approvers) == 0 {
+			return true
 		}
+		for _, a := range approvers {
+			if a == id {
+				return true
+			}
+		}
+		return false
+	}
+	for _, re := range reactions {
+		var verdict bool
 		switch re.Name {
 		case "white_check_mark", "heavy_check_mark", "+1":
-			return true, re.Users[0], true
+			verdict = true
 		case "x", "no_entry", "-1":
-			return false, re.Users[0], true
+			verdict = false
+		default:
+			continue
+		}
+		for _, u := range re.Users {
+			if allowed(u) {
+				return verdict, u, true
+			}
 		}
 	}
 	return false, "", false

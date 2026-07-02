@@ -1,5 +1,11 @@
 {{define "content"}}
-<h1 class="text-2xl font-bold mb-4">Org dashboard <span class="text-sm text-gray-400 font-normal">({{.Window}}-day window)</span></h1>
+<div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+  <h1 class="text-2xl font-bold">Org dashboard <span class="text-sm text-gray-400 font-normal">({{.Window}}-day window)</span></h1>
+  <div class="flex gap-2">
+    <form method="post" action="/reports/confluence"><button class="bg-blue-700 text-white px-3 py-1 rounded text-sm">Post Confluence report</button></form>
+    <form method="post" action="/export/compliance"><button class="bg-slate-700 text-white px-3 py-1 rounded text-sm">Compliance export</button></form>
+  </div>
+</div>
 
 <div class="grid md:grid-cols-4 gap-4 mb-6">
   <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Total runs</div>
@@ -13,8 +19,25 @@
     <div class="text-3xl font-bold">{{len .Board}}</div></div>
 </div>
 
+{{if .DORA}}
+<div class="grid md:grid-cols-4 gap-4 mb-6">
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Lead time p50</div>
+    <div class="text-2xl font-bold" title="{{.DORA.LeadTimeFormula}}">{{if .DORA.LeadTimeCount}}{{.DORA.LeadTimeP50}}{{else}}n/a{{end}}</div>
+    <div class="text-xs text-gray-400">Jira created→done ({{.DORA.LeadTimeCount}} issues)</div></div>
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">AI change-failure rate</div>
+    <div class="text-2xl font-bold {{if gt .DORA.CFR.Value 15.0}}text-red-600{{end}}" title="{{.DORA.CFR.Formula}}">{{pct .DORA.CFR.Value}}</div>
+    <div class="text-xs text-gray-400">merged PRs later reverted</div></div>
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">PR cycle p50 / p75</div>
+    <div class="text-2xl font-bold" title="{{.DORA.PRCycle.Formula}}">{{if .DORA.PRCycle.Count}}{{.DORA.PRCycle.P50}} / {{.DORA.PRCycle.P75}}{{else}}n/a{{end}}</div>
+    <div class="text-xs text-gray-400">open→merge ({{.DORA.PRCycle.Count}} PRs)</div></div>
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Deploy frequency</div>
+    <div class="text-2xl font-bold text-gray-400">n/a</div>
+    <div class="text-xs text-gray-400" title="{{.DORA.DeployFreqNote}}">no deploy events captured</div></div>
+</div>
+{{end}}
+
 <div class="grid md:grid-cols-2 gap-4 mb-6">
-  <div class="bg-white border rounded-lg p-4"><h2 class="font-semibold mb-2">Cost trend (14d)</h2><canvas id="costChart" height="140"></canvas></div>
+  <div class="bg-white border rounded-lg p-4"><h2 class="font-semibold mb-2">Cost trend (14d) · <a href="/spikes" class="text-blue-600 text-sm hover:underline">spikes →</a></h2><canvas id="costChart" height="140"></canvas></div>
   <div class="bg-white border rounded-lg p-4"><h2 class="font-semibold mb-2">Grade distribution</h2><canvas id="gradeChart" height="140"></canvas></div>
 </div>
 <script type="application/json" id="chart-data">{{.ChartJSON}}</script>
