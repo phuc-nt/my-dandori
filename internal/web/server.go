@@ -82,7 +82,12 @@ func (s *Server) routes() {
 	})
 	s.mux.Handle("/static/*", staticHandler())
 
-	s.mux.Get("/", s.handleStandup)
+	s.mux.Get("/", s.handleHome) // mode-aware: exec home or standup
+	s.mux.Get("/standup", s.handleStandup)
+	s.mux.Post("/mode", s.handleSetMode)
+	s.mux.Get("/exec", s.handleExecHome)
+	s.mux.Post("/exec/approve/{id}", s.handleExecApprove)
+	s.mux.Post("/exec/insight/{id}/dismiss", s.handleExecDismiss)
 	s.mux.Get("/dash/org", s.handleDashOrg)
 	s.mux.Get("/dash/project/{project}", s.handleDashProject)
 	s.mux.Get("/dash/agent/{agent}", s.handleDashAgent)
@@ -98,9 +103,13 @@ func (s *Server) routes() {
 	s.mux.Post("/runs/{id}/flag", s.handleRunFlag)
 	s.mux.Post("/runs/{id}/playbook", s.handlePlaybookCreate)
 	s.mux.Get("/playbooks", s.handlePlaybooks)
+	s.mux.Post("/playbooks/{id}/adopt", s.handlePlaybookAdopt)
 
 	s.mux.Get("/reviews", s.handleReviews)
 	s.mux.Post("/reviews/{id}/decide", s.handleReviewDecide)
+
+	s.mux.Get("/chat", s.handleChatPage)
+	s.mux.Post("/chat/message", s.handleChatMessage)
 
 	s.mux.Get("/budgets", s.handleBudgets)
 	s.mux.Post("/budgets", s.handleBudgetSet)

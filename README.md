@@ -51,6 +51,23 @@ Claude Code ──PreToolUse──▶ dandori hook pre-tool
 | `dandori loop run` | Closed loop: grade thấp → flag → Jira → band action |
 | `dandori review <agent>` | Nhận xét tiếng người (AI-generated, cache tuần) |
 | `dandori rules simulate --pattern '...'` | Thử guardrail trên lịch sử trước khi bật |
+| `dandori connect <url> --token X` | Nối máy dev vào server trung tâm (central mode) |
+| `dandori relay` | Đẩy event tồn (spool) lên server ngay |
+| `dandori team add\|assign\|list` | Quản lý đội: gộp operator + agent để so hiệu quả |
+| `dandori observe run` | Master Observer: sinh insight + áp dụng action đã duyệt |
+| `dandori flywheel detect\|promote\|publish\|adoption` | Phát hiện & chia sẻ cách làm hay |
+
+## Central mode (nhiều máy → 1 server)
+
+Server: `dandori serve` với `DANDORI_INGEST_TOKEN` set → mở thêm listener `0.0.0.0:4778` (Bearer token, tách hẳn console 127.0.0.1). Máy dev: `dandori connect http://server:4778 --token X` — hook parse transcript tại chỗ, chỉ gửi **số liệu đã redact** (không gửi transcript), offline thì spool rồi relay. Pre-tool guardrail chạy local qua policy snapshot.
+
+## Chế độ CEO vs Kỹ thuật
+
+Console có 2 mặt (nút chuyển ở thanh nav, nhớ bằng cookie):
+- **Điều hành** (`/`) — trang tiếng Việt cho CEO: giá trị AI mang lại + trend, thẻ đội đèn giao thông, hộp "Việc cần bạn" (Duyệt/Bỏ qua), trợ lý chat.
+- **Kỹ thuật** — 13 trang operator gốc cho trưởng nhóm.
+
+`/chat` — trợ lý điều hành tiếng Việt (OpenRouter tool-calling): hỏi đáp số liệu thật; hành động nhạy cảm chỉ **tạo yêu cầu chờ duyệt**, không tự thực thi.
 
 ## Console (http://127.0.0.1:4777)
 

@@ -33,7 +33,12 @@ func runPreTool(cfg *config.Config, st *store.Store, ing *capture.Ingestor, in c
 
 	tc := govern.ExtractToolCall(runID, agentID, project, in.CWD, in.ToolName, in.ToolInput)
 	engine := govern.NewEngine(cfg, st)
-	d := engine.Evaluate(contextOf(), tc)
+	return printVerdict(engine.Evaluate(contextOf(), tc))
+}
+
+// printVerdict emits the hook decision: Allow → silent exit 0, Deny/Ask →
+// decision JSON on stdout. Shared by the DB-backed and snapshot eval paths.
+func printVerdict(d govern.Decision) error {
 	if d.Verdict == govern.Allow {
 		return nil
 	}

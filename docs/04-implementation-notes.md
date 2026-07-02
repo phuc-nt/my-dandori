@@ -98,9 +98,23 @@ Khép các lời hứa vision chưa giữ, trọng tâm LEARN & GOVERN (theo `pl
 - **Why-failed UF5:** run failed/killed có banner verdict rule-based (loop lỗi lặp / block cuối / lỗi cuối) + tô đậm evidence rows trong timeline.
 - **Hardening:** secret **redact tại INGEST** (package `internal/redact` dùng chung — DB không còn giữ token thô; export redact lần 2); escalation SLA (approval pending quá 4×gate-wait → event → Slack, trước khi TTL expire); budget **projected EOM** theo burn-rate.
 
+## v4 (260702, plan `260702-2040`) — Executive: sản phẩm cho CEO nhiều team
+
+Nâng Dandori từ harness một-người thành sản phẩm điều hành cho CEO công ty nhiều đội. Toàn bộ đã qua red-team plan review (4 CRITICAL + 5 HIGH vá trước khi code).
+
+- **Central mode (P1):** hook máy dev parse transcript **tại chỗ** và POST **chỉ số liệu đã redact** (`internal/ingest/derive.go`) — server KHÔNG bao giờ mở transcript của máy khác. **Hai listener một binary:** console `127.0.0.1:4777` (originGuard, không auth — không bao giờ public) + ingest listener riêng `0.0.0.0:4778` (Bearer token, `crypto/subtle`, không có route console). Idempotency: mỗi event 1 ULID + UNIQUE index → spool replay không đếm trùng. Pre-tool GOVERN chạy **local** trên máy dev qua policy snapshot cache (không round-trip/call → không nghẽn writer đơn); mất cache + server chết → chỉ chặn lệnh ghi (fail-closed hẹp). Read-only pool tách khỏi writer. `dandori connect` (token vào file 0600), `dandori relay`, `dandori team`.
+- **Operators + Teams (P1):** `operators` (người điều khiển, id = `username@hostname` lấy từ token principal), `teams`/`team_members` (gồm operator + agent). Team là khái niệm hạng nhất để so sánh hiệu quả giữa đội.
+- **Behavior analytics agent+human (P2):** đo cả agent lẫn người: prompt proxy (số từ + cờ specificity — tính **client-side**, không lưu prompt thô), steering (`MidRunMsgs`), retry loop, permission-ask, abandonment, task-size. Rollup theo operator/team, `TeamCompare` so đội-với-đội, 1-pass. **Chỉ số của người là RIÊNG TƯ, không publish** (steering nhiều khi là ĐÚNG — chống Goodhart).
+- **Master Observer (P3):** worker 30 phút + `dandori observe run` sinh insight có kiểu: `budget_overshoot_trend` (→ approval CEO), `agent_underused`/`operator_over_steering`/`playbook_candidate` (→ auto surface, INTERNAL-only, không ghi ngoài). Đề xuất rule kỹ thuật đi về surface **operator**, không vào inbox một-chạm của CEO. Không bypass: action nhạy cảm chỉ tạo `approvals`; applier riêng áp dụng sau khi người duyệt, consume-once + bù trừ. `expireStale` miễn trừ cả `observer:%`.
+- **Flywheel (P4):** `DetectCandidates` (run sạch + prompt rõ + ít can thiệp) → `PromoteCandidate` thành playbook card → `flywheel publish` lên Slack + Confluence (DRY_RUN guard, dedup/ngày). Card mô tả **mẫu/agent**, KHÔNG có tên/xếp hạng người. Adoption tracking: ghi ai dùng playbook + đo done-rate trước/sau (riêng tư).
+- **CEO Chatbot (P5):** `internal/chat` — OpenRouter tool-calling non-stream (`OPENROUTER_MODEL`), loop nhiều lượt, `parallel_tool_calls=false`. Read tools gọi hàm nội bộ (stats/leaderboard/team/run/insights). Action tools (`request_kill/budget/band`) **chỉ TẠO yêu cầu duyệt** — KHÔNG có tool nào decide/consume approval → chatbot không thể là đường lách. Guard: câu hỏi số liệu không có tool result → "chưa lấy được số liệu" (không bịa); model không hỗ trợ tool → tắt chat có thông báo VI; turn cap + ngân sách token/ngày; mọi tool call audit + redact. UI HTMX `hx-post` một fragment (không SSE).
+- **Executive UI hai chế độ (P6):** trang chủ VI cho CEO — headline "Giá trị AI mang lại" + trend, thẻ đội đèn giao thông (ngưỡng named-const green≥0.66/amber≥0.40/đỏ/xám), inbox Duyệt/Bỏ qua (qua đúng đường decide đã audit), nhận định plain-VI, link trợ lý. **Mode switch** (Điều hành ⇄ Kỹ thuật, cookie) giữ nguyên 13 trang operator cũ. Copy duyệt trung tính "Đã duyệt (bảng điều khiển)" (single-principal, không nhận vơ per-human).
+- **UAT tiếng Việt (P7):** `docs/uat-test-cases.md` — kịch bản bấm-tay cho người low-tech kiểm thử toàn console.
+
 ## Giới hạn đã biết / [Sau]
 
 - Tailwind + HTMX + Chart.js qua CDN — cần mạng lần đầu; có CSS fallback tối giản.
+- **v4 [Sau]:** RBAC/đa-token per-operator (hiện single shared ingest token + single-principal approval); `rule_candidate_from_repeated_blocks` (observer tự đề xuất regex — cần operator review kỹ); ingest bind ra network thật cần firewall (giả định mạng nội bộ tin cậy); token-level streaming cho chat.
 - Trend Δ7d là xấp xỉ (window 7d vs 14d), chưa windowing chính xác.
 - `internal/web/viewdata.go` 224 dòng (hơi quá chuẩn 200 — thuần query helpers, tách sẽ vụn).
 - Cursor/Codex adapter, Confluence/Sheets write, RBAC/SSO, revert-detection, policy simulator: [Sau].

@@ -31,21 +31,31 @@ type Integrations struct {
 }
 
 type Config struct {
-	DBPath               string             `yaml:"db_path"`
-	Listen               string             `yaml:"listen"`
-	UserName             string             `yaml:"user_name"`
-	DryRun               bool               `yaml:"dry_run"`
-	AgentWriteDisabled   bool               `yaml:"-"`
-	Budget               Budget             `yaml:"budget"`
-	GateWaitSeconds      int                `yaml:"gate_wait_seconds"`
-	ApprovalTTLMinutes   int                `yaml:"approval_ttl_minutes"`
-	Approvers            []string           `yaml:"approvers"` // Slack user ids/names allowed to decide; empty = anyone
-	WatchIntervalSeconds int                `yaml:"watch_interval_seconds"`
-	ProjectsDir          string             `yaml:"projects_dir"`
-	LearnWindowDays      int                `yaml:"learn_window_days"`
-	CalibrateWithHumans  bool               `yaml:"calibrate_with_humans"`
-	OpenRouterKey        string             `yaml:"-"`
-	OpenRouterModel      string             `yaml:"-"`
+	DBPath               string   `yaml:"db_path"`
+	Listen               string   `yaml:"listen"`
+	UserName             string   `yaml:"user_name"`
+	DryRun               bool     `yaml:"dry_run"`
+	AgentWriteDisabled   bool     `yaml:"-"`
+	Budget               Budget   `yaml:"budget"`
+	GateWaitSeconds      int      `yaml:"gate_wait_seconds"`
+	ApprovalTTLMinutes   int      `yaml:"approval_ttl_minutes"`
+	Approvers            []string `yaml:"approvers"` // Slack user ids/names allowed to decide; empty = anyone
+	WatchIntervalSeconds int      `yaml:"watch_interval_seconds"`
+	ProjectsDir          string   `yaml:"projects_dir"`
+	LearnWindowDays      int      `yaml:"learn_window_days"`
+	CalibrateWithHumans  bool     `yaml:"calibrate_with_humans"`
+	OpenRouterKey        string   `yaml:"-"`
+	OpenRouterModel      string   `yaml:"-"`
+	// Central mode. Client side: ServerURL+IngestToken come from the 0600
+	// connect file (~/.dandori/connect.yaml) or env. Server side:
+	// IngestListen is where the token-authed ingest listener binds; the
+	// listener only starts when IngestToken is set.
+	ServerURL    string `yaml:"-"`
+	IngestToken  string `yaml:"-"`
+	IngestListen string `yaml:"ingest_listen"`
+	// CEO chatbot caps.
+	ChatMaxTurns         int                `yaml:"chat_max_turns"`
+	ChatDailyTokenBudget int                `yaml:"chat_daily_token_budget"`
 	GateChecks           []string           `yaml:"gate_checks"`
 	Pricing              map[string]Pricing `yaml:"pricing"`
 	Integrations         Integrations       `yaml:"integrations"`
@@ -65,6 +75,9 @@ func defaults() *Config {
 		ProjectsDir:          filepath.Join(home, ".claude", "projects"),
 		LearnWindowDays:      30,
 		CalibrateWithHumans:  true,
+		IngestListen:         "0.0.0.0:4778",
+		ChatMaxTurns:         6,
+		ChatDailyTokenBudget: 200_000,
 		GateChecks:           []string{"go vet ./...", "go test ./..."},
 		Pricing:              defaultPricing(),
 		Integrations:         Integrations{JiraProject: "SCRUM", SlackChannel: ""},
@@ -92,6 +105,7 @@ func Load(path string) (*Config, error) {
 		}
 	}
 	loadDotenv(".env") // sets os env for keys not already present
+	cfg.loadConnectFile()
 	cfg.applyEnv()
 	cfg.DBPath = expandHome(cfg.DBPath)
 	cfg.ProjectsDir = expandHome(cfg.ProjectsDir)
@@ -123,6 +137,15 @@ func (c *Config) applyEnv() {
 	}
 	c.OpenRouterKey = os.Getenv("OPENROUTER_API_KEY")
 	c.OpenRouterModel = os.Getenv("OPENROUTER_MODEL")
+	if v := os.Getenv("DANDORI_SERVER_URL"); v != "" {
+		c.ServerURL = v
+	}
+	if v := os.Getenv("DANDORI_INGEST_TOKEN"); v != "" {
+		c.IngestToken = v
+	}
+	if v := os.Getenv("DANDORI_INGEST_LISTEN"); v != "" {
+		c.IngestListen = v
+	}
 	if v := os.Getenv("SLACK_APPROVERS"); v != "" {
 		c.Approvers = nil
 		for _, a := range strings.Split(v, ",") {
@@ -151,6 +174,30 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("CONFLUENCE_SPACE_ID"); v != "" {
 		i.ConfluenceSpaceID = v
+	}
+}
+
+// ConnectFile is where `dandori connect` stores the central-server URL and
+// ingest token (mode 0600 — it holds a secret).
+func ConnectFile() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".dandori", "connect.yaml")
+}
+
+// loadConnectFile reads the client-side central-mode settings; env vars
+// applied later still override. Absent file = local mode, not an error.
+func (c *Config) loadConnectFile() {
+	b, err := os.ReadFile(ConnectFile())
+	if err != nil {
+		return
+	}
+	var cf struct {
+		ServerURL string `yaml:"server_url"`
+		Token     string `yaml:"token"`
+	}
+	if yaml.Unmarshal(b, &cf) == nil {
+		c.ServerURL = cf.ServerURL
+		c.IngestToken = cf.Token
 	}
 }
 

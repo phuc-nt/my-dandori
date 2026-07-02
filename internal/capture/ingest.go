@@ -174,20 +174,29 @@ func (g *Ingestor) ReconcileUsage(runID, transcriptPath string) error {
 	if err != nil {
 		return err
 	}
-	return g.recordUserMsgs(runID, u.MidRunMsgs)
+	if err := g.recordUserMsgs(runID, u.MidRunMsgs); err != nil {
+		return err
+	}
+	w, spec := PromptProxy(u.FirstUser)
+	return g.recordCountEvent(runID, "prompt_proxy", PromptProxyPayload(w, spec))
 }
 
 // recordUserMsgs keeps a single user_msg-count event per run up to date.
 // The count is MID-RUN steering messages only (autonomy metric input;
 // SET semantics like usage).
 func (g *Ingestor) recordUserMsgs(runID string, count int) error {
-	payload := strconv.Itoa(count)
-	res, err := g.St.DB.Exec(`UPDATE events SET payload = ? WHERE run_id = ? AND kind = 'user_msg'`, payload, runID)
+	return g.recordCountEvent(runID, "user_msg", strconv.Itoa(count))
+}
+
+// recordCountEvent keeps a single numeric analytics event of a kind per run
+// up to date (SET semantics like usage — reparses never duplicate).
+func (g *Ingestor) recordCountEvent(runID, kind, payload string) error {
+	res, err := g.St.DB.Exec(`UPDATE events SET payload = ? WHERE run_id = ? AND kind = ?`, payload, runID, kind)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		_, err = g.AddEvent(runID, "user_msg", "", sql.NullInt64{}, payload)
+		_, err = g.AddEvent(runID, kind, "", sql.NullInt64{}, payload)
 	}
 	return err
 }

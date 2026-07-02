@@ -14,7 +14,9 @@ import (
 )
 
 type Store struct {
-	DB *sql.DB
+	DB     *sql.DB
+	Path   string // db file path; readpool reopens it read-only
+	readDB *sql.DB
 }
 
 // Open opens (creating if needed) the SQLite file at path with WAL mode,
@@ -37,7 +39,7 @@ func Open(path string) (*Store, error) {
 	// Hook processes are short-lived and the server is single-user:
 	// one connection avoids SQLITE_BUSY between in-process goroutines.
 	db.SetMaxOpenConns(1)
-	s := &Store{DB: db}
+	s := &Store{DB: db, Path: path}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
@@ -45,7 +47,12 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
-func (s *Store) Close() error { return s.DB.Close() }
+func (s *Store) Close() error {
+	if s.readDB != nil {
+		s.readDB.Close()
+	}
+	return s.DB.Close()
+}
 
 // Now returns the canonical timestamp format stored everywhere (UTC RFC3339).
 func Now() string { return time.Now().UTC().Format(time.RFC3339) }

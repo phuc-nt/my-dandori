@@ -110,11 +110,13 @@ func (e *Engine) expireStale() {
 		return
 	}
 	cutoff := time.Now().UTC().Add(-time.Duration(ttl) * time.Minute).Format(time.RFC3339)
-	// Closed-loop band proposals are review-queue items humans act on in
-	// their own time — they must NOT die with the tool-call gate TTL
-	// (an expired proposal would never be re-proposed while the flag stays open).
+	// Closed-loop band proposals and observer actions are review-queue items
+	// humans act on in their own time — they must NOT die with the tool-call
+	// gate TTL (an expired proposal would never be re-proposed while its
+	// flag/insight stays open).
 	res, err := e.St.DB.Exec(`UPDATE approvals SET status = 'expired', decided_at = ?
-		WHERE status = 'pending' AND requested_at < ? AND action NOT LIKE 'band-demote:%'`, store.Now(), cutoff)
+		WHERE status = 'pending' AND requested_at < ? AND action NOT LIKE 'band-demote:%'
+		AND action NOT LIKE 'observer:%'`, store.Now(), cutoff)
 	if err != nil {
 		return
 	}

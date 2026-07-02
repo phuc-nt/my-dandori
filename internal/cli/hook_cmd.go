@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/phuc-nt/dandori/internal/capture"
+	"github.com/phuc-nt/dandori/internal/ingest"
 )
 
 // hookCmd is invoked by Claude Code hooks with the event payload on stdin.
@@ -31,6 +32,10 @@ var hookCmd = &cobra.Command{
 		}
 		if in.SessionID == "" {
 			return logAndAllow(fmt.Errorf("hook input missing session_id"))
+		}
+		// Central mode: no local DB — derive locally, POST/spool records.
+		if cfg, err := loadConfig(); err == nil && ingest.Enabled(cfg) {
+			return runHookCentral(cfg, args[0], in)
 		}
 		cfg, st, err := openStore()
 		if err != nil {

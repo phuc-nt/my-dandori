@@ -1,0 +1,41 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-1">Trợ lý điều hành</h1>
+<p class="text-gray-500 mb-4">Hỏi bằng tiếng Việt về chi phí, hiệu quả team, agent. Hành động nhạy cảm chỉ tạo <b>yêu cầu chờ duyệt</b> — không có gì tự thay đổi.</p>
+
+{{if .Notice}}
+<div class="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-800 mb-4">{{.Notice}}</div>
+{{else}}
+<div class="bg-white border rounded-lg flex flex-col" style="height: 70vh">
+  <div id="chat-messages" class="flex-1 overflow-y-auto p-4">
+    {{if not .History}}
+    <div class="text-gray-400 text-sm">
+      Gợi ý câu hỏi:
+      <ul class="list-disc ml-5 mt-1">
+        <li>Chi phí AI tuần này là bao nhiêu?</li>
+        <li>Team nào đang dùng agent hiệu quả nhất?</li>
+        <li>Agent nào đang bị hạng thấp? Vì sao?</li>
+        <li>Có đề xuất nào đang chờ tôi duyệt không?</li>
+      </ul>
+    </div>
+    {{end}}
+    {{range .History}}
+      {{if eq .Role "user"}}
+      <div class="flex justify-end"><div class="bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2 my-1 max-w-[80%] whitespace-pre-wrap">{{.Content}}</div></div>
+      {{else}}
+      <div class="flex"><div class="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-2 my-1 max-w-[80%] whitespace-pre-wrap">{{.Content}}</div></div>
+      {{end}}
+    {{end}}
+  </div>
+  <form hx-post="/chat/message" hx-target="#chat-messages" hx-swap="beforeend"
+        hx-on::after-request="this.reset(); var m=document.getElementById('chat-messages'); m.scrollTop=m.scrollHeight"
+        hx-indicator="#chat-waiting"
+        class="border-t p-3 flex gap-2">
+    <input name="message" required maxlength="4000" autocomplete="off"
+           placeholder="Hỏi trợ lý… (ví dụ: chi phí tuần này bao nhiêu?)"
+           class="border rounded-full px-4 py-2 flex-1">
+    <span id="chat-waiting" class="htmx-indicator self-center text-gray-400 text-sm">đang nghĩ…</span>
+    <button class="bg-blue-700 text-white rounded-full px-5 py-2">Gửi</button>
+  </form>
+</div>
+{{end}}
+{{end}}

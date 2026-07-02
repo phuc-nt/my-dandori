@@ -17,7 +17,14 @@
 <body class="bg-gray-50 text-gray-900">
 <nav class="bg-slate-900 text-white px-4 py-2 flex items-center gap-4 flex-wrap">
   <a href="/" class="font-bold text-lg">⛩ Dandori</a>
-  <a href="/" class="hover:underline">Standup</a>
+  {{if eq .Mode "exec"}}
+  <a href="/" class="hover:underline">Trang chủ</a>
+  <a href="/chat" class="hover:underline">Trợ lý</a>
+  <a href="/reviews" class="hover:underline">Cần duyệt</a>
+  <span class="flex-1"></span>
+  <form method="post" action="/mode?to=tech"><button class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded">Kỹ thuật ⚙</button></form>
+  {{else}}
+  <a href="/standup" class="hover:underline">Standup</a>
   <a href="/dash/org" class="hover:underline">Org</a>
   <a href="/runs" class="hover:underline">Runs</a>
   <a href="/reviews" class="hover:underline">Reviews</a>
@@ -25,7 +32,10 @@
   <a href="/provenance" class="hover:underline">Provenance</a>
   <a href="/playbooks" class="hover:underline">Playbooks</a>
   <a href="/rules" class="hover:underline">Rules</a>
+  <a href="/chat" class="hover:underline">Chat</a>
   <span class="flex-1"></span>
+  <form method="post" action="/mode?to=exec"><button class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded">Điều hành ⛩</button></form>
+  {{end}}
   {{if .KillOn}}
   <form method="post" action="/api/kill" onsubmit="return confirm('Lift the global kill switch?')">
     <input type="hidden" name="on" value="0">

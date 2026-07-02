@@ -25,3 +25,10 @@ func truncate(b []byte, n int) string {
 	}
 	return string(b[:n]) + `…(truncated)`
 }
+
+// Truncate caps a payload at the standard event size (exported for the
+// central-mode client, which builds event records outside this package).
+func Truncate(b []byte) string { return truncate(b, payloadCap) }
+
+// IsErrorResponse reports whether a raw tool response looks like a failure.
+func IsErrorResponse(raw []byte) bool { return isErrorResponse(raw) }

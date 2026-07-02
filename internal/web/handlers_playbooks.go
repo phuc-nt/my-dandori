@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/phuc-nt/dandori/internal/capture"
+	"github.com/phuc-nt/dandori/internal/learn"
 	"github.com/phuc-nt/dandori/internal/redact"
 	"github.com/phuc-nt/dandori/internal/store"
 )
@@ -121,4 +123,24 @@ func (s *Server) handlePlaybooks(w http.ResponseWriter, r *http.Request) {
 		out = append(out, p)
 	}
 	s.render(w, r, "playbooks", map[string]any{"Page": "playbooks", "Playbooks": out})
+}
+
+// handlePlaybookAdopt records that someone starts working from a playbook —
+// the flywheel's explicit adoption signal. metric_before freezes now;
+// outcomes compute later and stay private (coaching, not ranking).
+func (s *Server) handlePlaybookAdopt(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad playbook id", http.StatusBadRequest)
+		return
+	}
+	operator := r.FormValue("operator")
+	if operator == "" {
+		operator = s.Cfg.UserName + "@console"
+	}
+	if _, err := learn.RecordAdoption(s.Store, id, operator, "", s.Cfg.LearnWindowDays); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Write([]byte(`<span class="text-green-600 text-sm">Đã ghi nhận — chúc chạy mượt!</span>`))
 }

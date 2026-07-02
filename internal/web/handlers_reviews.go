@@ -1,12 +1,14 @@
 package web
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/phuc-nt/dandori/internal/govern"
+	"github.com/phuc-nt/dandori/internal/observer"
 )
 
 // handleReviews renders the review queue (UB1): pending approvals live-polled
@@ -51,6 +53,13 @@ func (s *Server) handleReviewDecide(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("HX-Refresh", "true")
 		w.WriteHeader(http.StatusConflict)
 		return
+	}
+	if approve {
+		// Observer/chat requests take effect on the click, not on the next
+		// worker tick. Consume-once makes the extra run harmless.
+		if _, err := observer.RunObserverApplier(s.Store); err != nil {
+			log.Println("observer applier after decide:", err)
+		}
 	}
 	redirectBack(w, r, "/reviews")
 }

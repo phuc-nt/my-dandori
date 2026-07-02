@@ -44,6 +44,11 @@ func FindTaskKey(text string) string {
 	return taskKeyRe.FindString(text)
 }
 
+// AgentID turns an agent name into its stable id (exported for the ingest
+// server, which receives names from remote clients and must map them the
+// same way local capture does).
+func AgentID(name string) string { return slugify(name) }
+
 // slugify turns an agent name into a stable id.
 func slugify(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
