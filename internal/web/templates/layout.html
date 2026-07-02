@@ -20,7 +20,7 @@
   {{if eq .Mode "exec"}}
   <a href="/" class="hover:underline">Trang chủ</a>
   <a href="/chat" class="hover:underline">Trợ lý</a>
-  <a href="/reviews" class="hover:underline">Cần duyệt</a>
+  <a href="/#exec-inbox" class="hover:underline">Cần duyệt</a>
   <span class="flex-1"></span>
   <form method="post" action="/mode?to=tech"><button class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded">Kỹ thuật ⚙</button></form>
   {{else}}
@@ -37,14 +37,14 @@
   <form method="post" action="/mode?to=exec"><button class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded">Điều hành ⛩</button></form>
   {{end}}
   {{if .KillOn}}
-  <form method="post" action="/api/kill" onsubmit="return confirm('Lift the global kill switch?')">
+  <form method="post" action="/api/kill" onsubmit="return confirm({{if eq .Mode "exec"}}'Gỡ nút dừng khẩn cấp toàn hệ thống?'{{else}}'Lift the global kill switch?'{{end}})">
     <input type="hidden" name="on" value="0">
-    <button class="bg-red-700 animate-pulse px-3 py-1 rounded font-bold">KILL SWITCH ON — lift</button>
+    <button class="bg-red-700 animate-pulse px-3 py-1 rounded font-bold">{{if eq .Mode "exec"}}ĐANG DỪNG KHẨN — gỡ{{else}}KILL SWITCH ON — lift{{end}}</button>
   </form>
   {{else}}
-  <form method="post" action="/api/kill" onsubmit="return confirm('Engage GLOBAL kill switch? Every agent tool call will be denied.')">
+  <form method="post" action="/api/kill" onsubmit="return confirm({{if eq .Mode "exec"}}'Dừng khẩn cấp TOÀN BỘ agent? Mọi lệnh của agent sẽ bị chặn ngay.'{{else}}'Engage GLOBAL kill switch? Every agent tool call will be denied.'{{end}})">
     <input type="hidden" name="on" value="1">
-    <button class="bg-red-600 hover:bg-red-500 px-3 py-1 rounded font-semibold">⏻ Kill switch</button>
+    <button class="bg-red-600 hover:bg-red-500 px-3 py-1 rounded font-semibold">⏻ {{if eq .Mode "exec"}}Dừng khẩn{{else}}Kill switch{{end}}</button>
   </form>
   {{end}}
 </nav>

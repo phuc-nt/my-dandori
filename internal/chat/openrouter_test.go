@@ -215,6 +215,31 @@ func TestNumericFallbackWithoutTool(t *testing.T) {
 	}
 }
 
+// The model sometimes narrates "đã tạo yêu cầu" WITHOUT calling an action
+// tool — a false confirmation. The guard must replace it, and no approval
+// may exist.
+func TestFalseActionClaimCorrected(t *testing.T) {
+	c, st := chatFixture(t, []scriptStep{
+		{text: "Đã tạo yêu cầu dừng run demo-r8. Cần bạn bấm DUYỆT trong mục Cần duyệt."},
+	})
+	seedAgentRun(t, st, "demo-r8", "agent-a")
+	out, err := c.Ask("dừng run demo-r8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "Đã tạo yêu cầu") {
+		t.Errorf("false confirmation passed through: %q", out)
+	}
+	if !strings.Contains(out, "chưa tạo được yêu cầu") {
+		t.Errorf("correction missing: %q", out)
+	}
+	var n int
+	st.DB.QueryRow(`SELECT count(*) FROM approvals`).Scan(&n)
+	if n != 0 {
+		t.Errorf("phantom approval created: %d", n)
+	}
+}
+
 // Unsupported model (upstream rejects tools) disables chat with a VI error.
 func TestUnsupportedModelDisablesChat(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "t.db"))

@@ -211,6 +211,7 @@ func (c *Client) Ask(userText string) (string, error) {
 	}
 	f := false
 	usedTool := false
+	actionRequested := false // an action tool actually created an approval this turn
 	var finalText string
 	for turn := 0; turn < maxTurns; turn++ {
 		resp, err := c.call(orRequest{Model: c.Cfg.OpenRouterModel, Messages: msgs,
@@ -225,6 +226,9 @@ func (c *Client) Ask(userText string) (string, error) {
 			for _, tc := range choice.Message.ToolCalls { // sequential by construction
 				usedTool = true
 				result, approvalID := Dispatch(c.St, c.Cfg, tc.Function.Name, tc.Function.Arguments, c.Principal)
+				if approvalID > 0 {
+					actionRequested = true
+				}
 				AuditToolCall(c.St, sessionID, tc.Function.Name, tc.Function.Arguments, result, approvalID)
 				msgs = append(msgs, orMessage{Role: "tool", ToolCallID: tc.ID, Name: tc.Function.Name, Content: result})
 			}
@@ -241,6 +245,12 @@ func (c *Client) Ask(userText string) (string, error) {
 	if !usedTool && looksNumeric(userText) {
 		finalText = "Tôi chưa lấy được số liệu cho câu này — bạn thử hỏi lại, hoặc xem trực tiếp trang Tổng quan."
 	}
+	// The model sometimes NARRATES "đã tạo yêu cầu duyệt" without actually
+	// calling an action tool — a false confirmation the CEO would wait on.
+	// If the answer claims a request but none was created, correct it.
+	if claimsActionRequest(finalText) && !actionRequested {
+		finalText = "Tôi chưa tạo được yêu cầu cho hành động này — bạn nêu rõ hơn (ví dụ mã run/agent cụ thể) hoặc thao tác trực tiếp trong console giúp tôi nhé."
+	}
 	if err := AddMessage(c.St, sessionID, "assistant", finalText); err != nil {
 		return "", err
 	}
@@ -251,3 +261,9 @@ func (c *Client) Ask(userText string) (string, error) {
 var numericRe = regexp.MustCompile(`(?i)chi phí|bao nhiêu|thống kê|xếp hạng|hạng gì|team nào|agent nào|tỉ lệ|tỷ lệ|ngân sách|token|\$|cost|how much|stats`)
 
 func looksNumeric(q string) bool { return numericRe.MatchString(q) }
+
+// claimsActionRequest flags an answer that says it created a pending action
+// request — such a claim must be backed by a real action tool call.
+var actionClaimRe = regexp.MustCompile(`(?i)đã tạo yêu cầu|tạo yêu cầu (dừng|đổi|chuyển)|yêu cầu duyệt đã|created (a )?request|pending_approval`)
+
+func claimsActionRequest(s string) bool { return actionClaimRe.MatchString(s) }

@@ -24,6 +24,8 @@ func (s *Server) handleChatPage(w http.ResponseWriter, r *http.Request) {
 	history, _ := chat.History(s.Store, sessionID, 50)
 	s.render(w, r, "chat", map[string]any{
 		"Page": "chat", "History": history, "Notice": notice,
+		"Mode":   modeFrom(r), // chat is CEO-facing: keep exec nav in exec mode
+		"KillOn": s.Store.Setting("kill_switch_global") == "1",
 	})
 }
 
