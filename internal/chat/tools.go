@@ -264,7 +264,7 @@ func runRequestKill(st *store.Store, _ *config.Config, args map[string]any, prin
 	}
 	id, err := observer.RequestAction(st, "kill", runID,
 		fmt.Sprintf("Yêu cầu dừng run %s (tạo từ trợ lý chat)", runID),
-		map[string]any{"run_id": runID}, principal)
+		map[string]any{"run_id": runID}, principal, "ceo")
 	if err != nil {
 		return nil, 0, err
 	}
@@ -278,7 +278,7 @@ func runRequestBudget(st *store.Store, _ *config.Config, args map[string]any, pr
 	}
 	id, err := observer.RequestAction(st, "budget", "global",
 		fmt.Sprintf("Yêu cầu đổi ngân sách tháng thành $%.0f (tạo từ trợ lý chat)", limit),
-		map[string]any{"scope_type": "global", "scope_id": "", "suggested_limit": limit}, principal)
+		map[string]any{"scope_type": "global", "scope_id": "", "suggested_limit": limit}, principal, "ceo")
 	if err != nil {
 		return nil, 0, err
 	}
@@ -298,7 +298,7 @@ func runRequestBand(st *store.Store, _ *config.Config, args map[string]any, prin
 	}
 	id, err := observer.RequestAction(st, "band", agentID,
 		fmt.Sprintf("Yêu cầu chuyển agent %s sang mức %s (tạo từ trợ lý chat)", agentID, band),
-		map[string]any{"agent_id": agentID, "band": band}, principal)
+		map[string]any{"agent_id": agentID, "band": band}, principal, "ceo")
 	if err != nil {
 		return nil, 0, err
 	}

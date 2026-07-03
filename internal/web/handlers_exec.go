@@ -27,10 +27,13 @@ func (s *Server) handleExecHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	ctxCount, ctxLast := s.contextCardData()
 	s.render(w, r, "exec_home", map[string]any{
 		"Page": "exec_home", "Mode": "exec",
-		"KillOn": s.Store.Setting("kill_switch_global") == "1",
-		"View":   view,
+		"KillOn":       s.Store.Setting("kill_switch_global") == "1",
+		"View":         view,
+		"ContextCount": ctxCount,
+		"ContextLast":  ctxLast,
 	})
 }
 

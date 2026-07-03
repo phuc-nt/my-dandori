@@ -34,6 +34,13 @@
   </div>
 </div>
 
+<!-- Tri thức công ty (read-only) -->
+<div class="bg-white border rounded-xl p-5 mt-4">
+  <div class="text-sm text-gray-500 mb-1">Tri thức công ty</div>
+  <div class="text-lg font-semibold">{{.ContextCount}} chính sách đang hiệu lực</div>
+  {{if .ContextLast}}<div class="text-sm text-gray-500 mt-1">Cập nhật gần nhất: {{.ContextLast}}</div>{{end}}
+</div>
+
 <!-- Hộp việc cần bạn -->
 <div class="bg-white border rounded-xl p-5 mt-4">
   <div class="font-semibold mb-3">Việc cần bạn xử lý {{template "inbox_count" .View}}</div>

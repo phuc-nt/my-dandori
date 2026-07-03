@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/phuc-nt/dandori/internal/config"
+	"github.com/phuc-nt/dandori/internal/contexthub"
 	"github.com/phuc-nt/dandori/internal/govern"
 	"github.com/phuc-nt/dandori/internal/store"
 )
@@ -42,6 +43,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /ingest/events", s.handleEvents)
 	mux.HandleFunc("GET /ingest/policy", s.handlePolicy)
+	mux.HandleFunc("GET /ingest/context", s.handleContext)
 	return s.auth(mux)
 }
 
@@ -104,4 +106,20 @@ func (s *Server) handlePolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(snap)
+}
+
+// handleContext serves an agent's merged effective context for SessionStart
+// injection on the dev machine. On a DB error it returns 500 (NOT 200-empty)
+// so the client keeps its good stale cache rather than overwriting it with
+// empty (M4). Any ingest-token holder can read any agent's context — single
+// shared token, same posture as /ingest/policy (M3).
+func (s *Server) handleContext(w http.ResponseWriter, r *http.Request) {
+	agent := r.URL.Query().Get("agent")
+	text, prov, err := contexthub.New(s.St).EffectiveContext(agent)
+	if err != nil {
+		http.Error(w, "internal", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"context": text, "provenance": prov})
 }

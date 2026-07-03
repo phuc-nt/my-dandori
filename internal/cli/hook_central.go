@@ -28,6 +28,7 @@ func runHookCentral(cfg *config.Config, event string, in capture.HookInput) erro
 	switch event {
 	case "session-start":
 		ingest.SaveSessionGit(in.SessionID, in.CWD)
+		injectContextCentral(c, in, capture.AgentID(agentName)) // best-effort, fail-open
 		return nil
 
 	case "pre-tool":

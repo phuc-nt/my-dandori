@@ -46,7 +46,11 @@ var hookCmd = &cobra.Command{
 
 		switch args[0] {
 		case "session-start":
-			err = ing.SessionStart(in)
+			if err = ing.SessionStart(in); err != nil {
+				return logAndAllow(err)
+			}
+			injectContextLocal(cfg, st, ing, in) // best-effort, fail-open
+			return nil
 		case "pre-tool":
 			return runPreTool(cfg, st, ing, in)
 		case "post-tool":

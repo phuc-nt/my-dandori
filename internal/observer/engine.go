@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/phuc-nt/dandori/internal/config"
+	"github.com/phuc-nt/dandori/internal/contexthub"
 	"github.com/phuc-nt/dandori/internal/govern"
 	"github.com/phuc-nt/dandori/internal/redact"
 	"github.com/phuc-nt/dandori/internal/store"
@@ -253,19 +254,77 @@ func applyInsightAction(st *store.Store, typ string, insightID int64, decidedBy 
 			return errPermanentApply{fmt.Errorf("insight %d: invalid band params", insightID)}
 		}
 		return govern.SetBand(st, ev.AgentID, ev.Band, decidedBy, fmt.Sprintf("approved request (insight #%d)", insightID))
+	case "context-promote", "context-company-edit":
+		return applyContextWrite(st, typ, evidence, insightID, decidedBy)
 	default:
 		return errPermanentApply{fmt.Errorf("unknown observer action type %q", typ)}
 	}
 }
 
+// applyContextWrite applies an approved company-context write (a promote from
+// a team doc, or a direct company edit). It loads the PINNED source version —
+// the exact bytes the approver saw — never the current head (H3 TOCTOU), and
+// re-checks for secrets (M1 defense in depth) before writing a new company
+// version. If the source has since advanced, an audit note records it.
+func applyContextWrite(st *store.Store, typ, evidence string, insightID int64, decidedBy string) error {
+	var ev struct {
+		SourceLayer   string `json:"source_layer"`
+		SourceTarget  string `json:"source_target"`
+		SourceVersion int    `json:"source_version_n"`
+		Content       string `json:"content"` // company-edit pins content directly
+	}
+	if err := json.Unmarshal([]byte(evidence), &ev); err != nil {
+		return errPermanentApply{err}
+	}
+	hub := contexthub.New(st)
+	content := ev.Content
+	// Promote pins a team version → load that immutable snapshot.
+	if ev.SourceLayer != "" && ev.SourceVersion > 0 {
+		d, err := hub.Version(ev.SourceLayer, ev.SourceTarget, ev.SourceVersion)
+		if err != nil {
+			return err // transient — retry
+		}
+		if d == nil {
+			return errPermanentApply{fmt.Errorf("insight %d: pinned version %s/%s v%d gone",
+				insightID, ev.SourceLayer, ev.SourceTarget, ev.SourceVersion)}
+		}
+		content = d.Content
+	}
+	if content == "" {
+		return errPermanentApply{fmt.Errorf("insight %d: no content to apply", insightID)}
+	}
+	note := fmt.Sprintf("duyệt #%d", insightID)
+	if ev.SourceLayer == contexthub.LayerTeam {
+		if head, _ := hub.Head(contexthub.LayerTeam, ev.SourceTarget); head != nil && head.VersionN > ev.SourceVersion {
+			note += fmt.Sprintf(" (đội đã cập nhật lên v%d sau khi đề xuất — áp bản đã duyệt)", head.VersionN)
+		}
+	}
+	if _, err := hub.SaveContext(contexthub.LayerCompany, contexthub.CompanyTarget, content, decidedBy, note); err != nil {
+		// A secret in the pinned content is permanent (won't fix on retry).
+		if err == contexthub.ErrSecretInContent {
+			return errPermanentApply{err}
+		}
+		return err
+	}
+	auditAction := "context_company_edited"
+	if typ == "context-promote" {
+		auditAction = "context_promoted"
+	}
+	a := &govern.Audit{St: st, Actor: decidedBy}
+	_, err := a.Append(auditAction, "company:*", note)
+	return err
+}
+
 // RequestAction is the shared "propose, never execute" entry point: it
 // persists an insight holding the structured params and opens an approval
-// request in the observer namespace. Used by the observer's own detectors
-// and by the CEO chatbot's action tools — neither may mutate state directly.
-func RequestAction(st *store.Store, typ, subject, summary string, params map[string]any, requestedBy string) (int64, error) {
+// request in the observer namespace. Used by the CEO chatbot's action tools
+// (surface "ceo") and by the Context Hub's company-edit/promote flows
+// (surface "operator" — a technical doc action, never a CEO one-tap card).
+// Neither may mutate state directly.
+func RequestAction(st *store.Store, typ, subject, summary string, params map[string]any, requestedBy, surface string) (int64, error) {
 	id, err := persistInsight(st, Insight{
 		Type: "request_" + typ, Subject: subject, Summary: summary,
-		Evidence: params, Class: "approval", Surface: "ceo",
+		Evidence: params, Class: "approval", Surface: surface,
 	})
 	if err != nil {
 		return 0, err

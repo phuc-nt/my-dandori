@@ -111,9 +111,25 @@ Nâng Dandori từ harness một-người thành sản phẩm điều hành cho 
 - **Executive UI hai chế độ (P6):** trang chủ VI cho CEO — headline "Giá trị AI mang lại" + trend, thẻ đội đèn giao thông (ngưỡng named-const green≥0.66/amber≥0.40/đỏ/xám), inbox Duyệt/Bỏ qua (qua đúng đường decide đã audit), nhận định plain-VI, link trợ lý. **Mode switch** (Điều hành ⇄ Kỹ thuật, cookie) giữ nguyên 13 trang operator cũ. Copy duyệt trung tính "Đã duyệt (bảng điều khiển)" (single-principal, không nhận vơ per-human).
 - **UAT tiếng Việt (P7):** `docs/uat-test-cases.md` — kịch bản bấm-tay cho người low-tech kiểm thử toàn console.
 
+## v5 (260703, plan `260703-2101`) — Context Hub
+
+Khép mảng vision còn trắng: **C5** (context phân tầng), **C6** (version/diff/rollback), **UD1–UD4** (editor/history/promote/preview) + **cầu nối thực thi** — context thật sự được tiêm vào phiên Claude Code. Qua red-team (1 CRITICAL + 3 HIGH vá trước khi code).
+
+- **Context phân tầng (C5):** `contexts` (layer company/team/agent, target `*`/team-id/agent-id) + `context_versions` (immutable full snapshot) + `context_heads` (con trỏ head). Migration 011 additive.
+- **Effective context = concatenation** company→team→agent (KHÔNG override): chính sách công ty **luôn áp dụng**, đội bổ sung, agent tinh chỉnh. Header cố định + boundary marker; budget theo **rune** (VN đa-byte) 3800/3800/2000, total-cap ≤10k, luôn giữ marker đóng (H2). Literal `dandori-context:` trong nội dung bị **neutralize** để không giả mạo được marker (M2). Whitespace-only head = coi như retire.
+- **Version/diff/rollback (C6, UD2):** mỗi lần sửa = version mới bất biến; diff line-level bằng `github.com/hexops/gotextdiff` (**dep mới đầu tiên sau lâu — pure-Go no-CGO**, cross-compile verified); rollback = version mới copy nội dung cũ (lịch sử không xoá). version_n atomic theo MAX + 1 retry khi đua UNIQUE.
+- **Company layer approval-gated (C1):** sửa/khôi phục chính sách **công ty** không ghi thẳng — tạo `RequestAction("context-company-edit", surface=operator)` → applier ghi sau khi duyệt (consume-once). Team/agent sửa trực tiếp có audit. Đây là mutation nhạy cảm nhất sản phẩm (tiêm vào MỌI agent) nên không có đường bypass.
+- **Promote team→company (UD3):** đề xuất ghim `{source_version_n}` — applier áp đúng bản người duyệt đã nhìn, KHÔNG áp head hiện tại (H3 TOCTOU); nếu đội đã sửa sau đề xuất thì audit ghi chú. Dedup 1 đề xuất/đội.
+- **Secret fail-loud (M1):** `SaveContext` **từ chối** nội dung chứa chuỗi giống secret (không redact im lặng — sẽ làm hỏng nghĩa policy toàn org). Báo lỗi VI nêu đoạn vi phạm. Cái giá: prose hợp lệ như "Bearer token" cũng bị chặn, phải viết lại.
+- **Cầu nối tiêm (điểm ăn tiền):** hook `SessionStart` trả `hookSpecificOutput.additionalContext` = effective context (chỉ source startup|resume; **fail-open** tuyệt đối — lỗi/DB hỏng → exit 0, phiên vẫn chạy). Local đọc DB; central `GET /ingest/context` (TTL cache, 500-on-error để không đè stale cache tốt — M4). CLI `dandori context show --effective <agent>`.
+- **Provenance:** run ghi event `context_injected` payload `{company:v3,team:v5}` — biết run chạy với context version nào. Central là eventual (FlushThrottled).
+- **UI hai mode:** editor + history/diff/rollback + preview trong khu **Kỹ thuật** (📚 Context dưới nhóm Learn); exec_home có card đọc-chỉ "Tri thức công ty: N chính sách · cập nhật gần nhất".
+- **E2E hành vi thật (proof quyết định):** seed nonce vào company context → chạy phiên `claude -p` thật → hỏi "mã kiểm chứng?" → model trả **đúng nonce**. Chứng minh model NHẬN và DÙNG context tiêm vào (không chỉ emit JSON). `scripts/e2e_context_inject.sh` 6/6.
+
 ## Giới hạn đã biết / [Sau]
 
 - Tailwind + HTMX + Chart.js qua CDN — cần mạng lần đầu; có CSS fallback tối giản.
+- **v5 [Sau]:** rollout xấu vẫn tồn tại trong phiên ĐANG chạy đến hết phiên (SessionStart-only, không có đường flush/kill context giữa phiên); RBAC/tác giả per-principal; resolve multi-team hiện lấy team_id nhỏ nhất; re-inject mỗi lần resume; `/ingest/context` đọc được bởi bất kỳ token holder (single shared token, như `/ingest/policy`); import Drive/Confluence, lịch rollout: chưa làm.
 - **v4 [Sau]:** RBAC/đa-token per-operator (hiện single shared ingest token + single-principal approval); `rule_candidate_from_repeated_blocks` (observer tự đề xuất regex — cần operator review kỹ); ingest bind ra network thật cần firewall (giả định mạng nội bộ tin cậy); token-level streaming cho chat.
 - Trend Δ7d là xấp xỉ (window 7d vs 14d), chưa windowing chính xác.
 - `internal/web/viewdata.go` 224 dòng (hơi quá chuẩn 200 — thuần query helpers, tách sẽ vụn).

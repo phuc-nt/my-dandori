@@ -49,8 +49,8 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 | C2 | **Multi-runtime adapter** — Claude Code trước, rồi Cursor/Codex/Copilot | "Đội dùng 3 tool khác nhau, vẫn về một schema" | tránh khoá cứng một vendor | **[MVP]** Claude · **[Sau]** còn lại |
 | C3 | **Cost attribution** — gắn metadata agent · project · team · task vào từng run | "Hoá đơn tháng này chia theo project ra sao — đội nào đốt?" | chi phí AI khó dự báo, chưa ai chia được | **[MVP]** |
 | C4 | **Unified schema human + agent** — kéo Jira/GitHub (việc người) và agent runs vào *cùng bảng* | "So người vs agent trên cùng thước đo" | điều kiện để LEARN so sánh công bằng | **[MVP]** |
-| C5 | **Multi-layer Context Hub** — Company → Project → Team → Agent → Task, có chủ sở hữu | "CLAUDE.md của senior thành policy tổ chức, ở lại khi họ nghỉ" | tri thức bay mất khi người đi | **[Sau]** |
-| C6 | **Context version control** — diff + rollback context theo thời gian | "Đổi context xong agent tệ đi — revert về bản trước" | context drift là lỗi harness #1 | **[Sau]** |
+| C5 | **Multi-layer Context Hub** — Company → Project → Team → Agent → Task, có chủ sở hữu | "CLAUDE.md của senior thành policy tổ chức, ở lại khi họ nghỉ" | tri thức bay mất khi người đi | **v5 ✅ (Company→Team→Agent)** |
+| C6 | **Context version control** — diff + rollback context theo thời gian | "Đổi context xong agent tệ đi — revert về bản trước" | context drift là lỗi harness #1 | **v5 ✅** |
 | C7 | **Background watcher** — bắt cả run khi wrapper bị bỏ qua | "Không lọt run nào, kể cả chạy tay" | audit phải đủ, không thủng | **[MVP]** |
 
 ---
@@ -148,10 +148,10 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 
 | # | Feature | User *làm gì* | Trụ | Service | Ưu tiên |
 |---|---|---|---|---|---|
-| UD1 | **Context editor + version** | sửa mọi layer (Company→Task), tự version, ghi ai/khi nào | CAPTURE | — | **[Sau]** |
-| UD2 | **Context diff + rollback** | so hai version một CLAUDE.md/policy, revert một click | CAPTURE·GOVERN | — | **[Sau]** |
-| UD3 | **Promote to org policy** | "thăng" context team/agent tốt lên tầng Company | CAPTURE·LEARN | — | **[Sau]** |
-| UD4 | **"Effective context" preview** | xem đúng context đã merge mà agent *thực sự* thấy cho một task | CAPTURE | — | **[Sau]** |
+| UD1 | **Context editor + version** | sửa mọi layer (Company→Task), tự version, ghi ai/khi nào | CAPTURE | — | **v5 ✅** |
+| UD2 | **Context diff + rollback** | so hai version một CLAUDE.md/policy, revert một click | CAPTURE·GOVERN | — | **v5 ✅** |
+| UD3 | **Promote to org policy** | "thăng" context team/agent tốt lên tầng Company | CAPTURE·LEARN | — | **v5 ✅** |
+| UD4 | **"Effective context" preview** | xem đúng context đã merge mà agent *thực sự* thấy cho một task | CAPTURE | — | **v5 ✅** |
 
 > UD4 bị đánh giá thấp một cách oan: câu hỏi debug số một luôn là *"agent thật ra biết những gì?"* — preview này trả lời thẳng.
 

@@ -105,6 +105,14 @@ func (s *Server) routes() {
 	s.mux.Get("/playbooks", s.handlePlaybooks)
 	s.mux.Post("/playbooks/{id}/adopt", s.handlePlaybookAdopt)
 
+	s.mux.Get("/contexts", s.handleContexts)
+	s.mux.Post("/contexts/save", s.handleContextSave)
+	s.mux.Get("/contexts/{layer}/{target}/history", s.handleContextHistory)
+	s.mux.Get("/contexts/diff", s.handleContextDiff)
+	s.mux.Post("/contexts/rollback", s.handleContextRollback)
+	s.mux.Post("/contexts/promote", s.handleContextPromote)
+	s.mux.Get("/contexts/effective", s.handleContextEffective)
+
 	s.mux.Get("/reviews", s.handleReviews)
 	s.mux.Post("/reviews/{id}/decide", s.handleReviewDecide)
 
