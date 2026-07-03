@@ -73,8 +73,16 @@ func TestModeSwitchPersists(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "dandori_mode", Value: "tech"})
 	rr := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rr, req)
-	if strings.Contains(rr.Body.String(), "Bảng điều hành") {
+	// Tech mode must render the operator standup, not the exec home. The
+	// exec home's headline card ("Giá trị AI mang lại") is unique to it —
+	// the phrase "Bảng điều hành" also appears on the tech-mode return
+	// button, so assert on the headline instead.
+	if strings.Contains(rr.Body.String(), "Giá trị AI mang lại") {
 		t.Error("tech mode still showed exec home")
+	}
+	// And the tech sidebar's 3-pillar grouping must be present.
+	if !strings.Contains(rr.Body.String(), "Capture — ghi nhận") {
+		t.Error("tech mode sidebar missing pillar grouping")
 	}
 }
 

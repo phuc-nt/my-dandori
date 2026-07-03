@@ -83,3 +83,13 @@ func (s *Server) renderInbox(w http.ResponseWriter, r *http.Request) {
 // execActor is the single-principal attribution (plan Trust model). The mode
 // cookie is a label, not proof of who clicked — so no per-human claim.
 func (s *Server) execActor() string { return s.Cfg.UserName + "@console" }
+
+// ceoInboxCount is the number of CEO-surface items awaiting a decision —
+// shown as the sidebar "Cần duyệt" badge on every exec page.
+func (s *Server) ceoInboxCount() int {
+	var n int
+	_ = s.Store.Read().QueryRow(`SELECT count(*) FROM insights
+		WHERE surface = 'ceo' AND class = 'approval' AND status IN ('open','surfaced')
+		AND approval_id IS NOT NULL`).Scan(&n)
+	return n
+}

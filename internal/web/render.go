@@ -26,8 +26,21 @@ type renderer struct {
 	pages map[string]*template.Template
 }
 
+// navItem is the data one sidebar link needs: which page is active, this
+// item's page key, its href, icon and label (+ optional badge count).
+type navItem struct {
+	Active, Item, Href, Icon, Label string
+	Badge                           int
+}
+
 var tmplFuncs = template.FuncMap{
 	"list": func(items ...any) []any { return items },
+	"navctx": func(active, item, href, icon, label string) navItem {
+		return navItem{Active: active, Item: item, Href: href, Icon: icon, Label: label}
+	},
+	"navctx4": func(active, item, href, icon, label string, badge int) navItem {
+		return navItem{Active: active, Item: item, Href: href, Icon: icon, Label: label, Badge: badge}
+	},
 	"deref": func(p *int64) int64 {
 		if p == nil {
 			return 0
@@ -84,6 +97,24 @@ func (s *Server) render(w http.ResponseWriter, req *http.Request, page string, d
 	if !ok {
 		http.Error(w, "unknown page "+page, 500)
 		return
+	}
+	// The sidebar needs Mode (which nav to draw), Page (which item is active)
+	// and KillOn on EVERY page. Inject them centrally so handlers don't each
+	// have to remember — a missing Mode is what made /chat show the wrong nav.
+	if m, ok := data.(map[string]any); ok {
+		mode := modeFrom(req)
+		if _, set := m["Mode"]; !set {
+			m["Mode"] = mode
+		}
+		if _, set := m["KillOn"]; !set {
+			m["KillOn"] = s.Store.Setting("kill_switch_global") == "1"
+		}
+		// The exec sidebar shows a "cần duyệt" badge on every exec page.
+		if m["Mode"] == "exec" {
+			if _, set := m["InboxCount"]; !set {
+				m["InboxCount"] = s.ceoInboxCount()
+			}
+		}
 	}
 	name := "layout.html"
 	if frag := req.URL.Query().Get("fragment"); frag != "" && req.Header.Get("HX-Request") == "true" {

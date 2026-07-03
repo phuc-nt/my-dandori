@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,44 +12,92 @@
     body{font-family:system-ui,sans-serif}
     table{border-collapse:collapse}
     .fallback td,.fallback th{border:1px solid #ddd;padding:4px 8px}
+    .nav-active{background:rgba(255,255,255,.14);border-left:3px solid #60a5fa}
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
-<nav class="bg-slate-900 text-white px-4 py-2 flex items-center gap-4 flex-wrap">
-  <a href="/" class="font-bold text-lg">⛩ Dandori</a>
-  {{if eq .Mode "exec"}}
-  <a href="/" class="hover:underline">Trang chủ</a>
-  <a href="/chat" class="hover:underline">Trợ lý</a>
-  <a href="/#exec-inbox" class="hover:underline">Cần duyệt</a>
-  <span class="flex-1"></span>
-  <form method="post" action="/mode?to=tech"><button class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded">Kỹ thuật ⚙</button></form>
-  {{else}}
-  <a href="/standup" class="hover:underline">Standup</a>
-  <a href="/dash/org" class="hover:underline">Org</a>
-  <a href="/runs" class="hover:underline">Runs</a>
-  <a href="/reviews" class="hover:underline">Reviews</a>
-  <a href="/budgets" class="hover:underline">Budgets</a>
-  <a href="/provenance" class="hover:underline">Provenance</a>
-  <a href="/playbooks" class="hover:underline">Playbooks</a>
-  <a href="/rules" class="hover:underline">Rules</a>
-  <a href="/chat" class="hover:underline">Chat</a>
-  <span class="flex-1"></span>
-  <form method="post" action="/mode?to=exec"><button class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded">Điều hành ⛩</button></form>
-  {{end}}
-  {{if .KillOn}}
-  <form method="post" action="/api/kill" onsubmit="return confirm({{if eq .Mode "exec"}}'Gỡ nút dừng khẩn cấp toàn hệ thống?'{{else}}'Lift the global kill switch?'{{end}})">
-    <input type="hidden" name="on" value="0">
-    <button class="bg-red-700 animate-pulse px-3 py-1 rounded font-bold">{{if eq .Mode "exec"}}ĐANG DỪNG KHẨN — gỡ{{else}}KILL SWITCH ON — lift{{end}}</button>
-  </form>
-  {{else}}
-  <form method="post" action="/api/kill" onsubmit="return confirm({{if eq .Mode "exec"}}'Dừng khẩn cấp TOÀN BỘ agent? Mọi lệnh của agent sẽ bị chặn ngay.'{{else}}'Engage GLOBAL kill switch? Every agent tool call will be denied.'{{end}})">
-    <input type="hidden" name="on" value="1">
-    <button class="bg-red-600 hover:bg-red-500 px-3 py-1 rounded font-semibold">⏻ {{if eq .Mode "exec"}}Dừng khẩn{{else}}Kill switch{{end}}</button>
-  </form>
-  {{end}}
-</nav>
-<main class="max-w-7xl mx-auto p-4">
-  {{template "content" .}}
-</main>
+<div class="flex min-h-screen">
+
+  <!-- Sidebar cố định -->
+  <aside class="w-60 shrink-0 bg-slate-900 text-slate-200 flex flex-col">
+    <a href="/" class="flex items-center gap-2 px-4 py-4 text-white font-bold text-lg border-b border-slate-800">⛩ Dandori</a>
+
+    {{if eq .Mode "exec"}}
+    {{/* ---- Khu ĐIỀU HÀNH (CEO) ---- */}}
+    <nav class="flex-1 py-3 text-sm">
+      {{template "navlink" navctx .Page "exec_home" "/" "🏠" "Trang chủ"}}
+      {{template "navlink" navctx .Page "chat" "/chat" "💬" "Trợ lý"}}
+      {{template "navlink_badge" navctx4 .Page "reviews" "/#exec-inbox" "✅" "Cần duyệt" .InboxCount}}
+    </nav>
+    <div class="p-3 border-t border-slate-800 space-y-2">
+      <div class="text-xs text-slate-400">Đang xem: <b class="text-slate-200">Điều hành</b></div>
+      <form method="post" action="/mode?to=tech">
+        <button class="w-full text-xs bg-slate-700 hover:bg-slate-600 px-2 py-2 rounded flex items-center justify-center gap-1">⚙ Chuyển sang Kỹ thuật</button>
+      </form>
+    </div>
+
+    {{else}}
+    {{/* ---- Khu KỸ THUẬT (tech lead), nhóm theo 3 trụ ---- */}}
+    <nav class="flex-1 py-3 text-sm overflow-y-auto">
+      <div class="px-4 pt-2 pb-1 text-[11px] uppercase tracking-wide text-slate-500">Capture — ghi nhận</div>
+      {{template "navlink" navctx .Page "standup" "/standup" "📋" "Standup"}}
+      {{template "navlink" navctx .Page "runs" "/runs" "📄" "Runs"}}
+      {{template "navlink" navctx .Page "spikes" "/spikes" "📈" "Spikes"}}
+
+      <div class="px-4 pt-3 pb-1 text-[11px] uppercase tracking-wide text-slate-500">Govern — quản trị</div>
+      {{template "navlink" navctx .Page "reviews" "/reviews" "✅" "Reviews"}}
+      {{template "navlink" navctx .Page "rules" "/rules" "🛡" "Rules"}}
+      {{template "navlink" navctx .Page "budgets" "/budgets" "💰" "Budgets"}}
+
+      <div class="px-4 pt-3 pb-1 text-[11px] uppercase tracking-wide text-slate-500">Learn — học hỏi</div>
+      {{template "navlink" navctx .Page "org" "/dash/org" "🏢" "Org"}}
+      {{template "navlink" navctx .Page "playbooks" "/playbooks" "📘" "Playbooks"}}
+      {{template "navlink" navctx .Page "provenance" "/provenance" "🔍" "Provenance"}}
+      {{template "navlink" navctx .Page "chat" "/chat" "💬" "Chat"}}
+    </nav>
+    <div class="p-3 border-t border-slate-800 space-y-2">
+      <div class="text-xs text-slate-400">Đang xem: <b class="text-slate-200">Kỹ thuật</b></div>
+      <form method="post" action="/mode?to=exec">
+        <button class="w-full text-xs bg-blue-700 hover:bg-blue-600 px-2 py-2 rounded flex items-center justify-center gap-1">⛩ Về Bảng điều hành</button>
+      </form>
+    </div>
+    {{end}}
+  </aside>
+
+  <!-- Nội dung -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="bg-white border-b px-6 py-2 flex items-center justify-end">
+      {{if .KillOn}}
+      <form method="post" action="/api/kill" onsubmit="return confirm({{if eq .Mode "exec"}}'Gỡ nút dừng khẩn cấp toàn hệ thống?'{{else}}'Lift the global kill switch?'{{end}})">
+        <input type="hidden" name="on" value="0">
+        <button class="bg-red-700 animate-pulse text-white px-3 py-1 rounded font-bold text-sm">{{if eq .Mode "exec"}}⏻ ĐANG DỪNG KHẨN — gỡ{{else}}KILL SWITCH ON — lift{{end}}</button>
+      </form>
+      {{else}}
+      <form method="post" action="/api/kill" onsubmit="return confirm({{if eq .Mode "exec"}}'Dừng khẩn cấp TOÀN BỘ agent? Mọi lệnh của agent sẽ bị chặn ngay.'{{else}}'Engage GLOBAL kill switch? Every agent tool call will be denied.'{{end}})">
+        <input type="hidden" name="on" value="1">
+        <button class="bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded font-semibold text-sm">⏻ {{if eq .Mode "exec"}}Dừng khẩn{{else}}Kill switch{{end}}</button>
+      </form>
+      {{end}}
+    </header>
+    <main class="flex-1 max-w-7xl w-full mx-auto p-6">
+      {{template "content" .}}
+    </main>
+  </div>
+</div>
 </body>
 </html>
+
+{{/* navctx bundles (activePage, itemPage, href, icon, label) for a nav link.
+     navctx4 adds a badge count. Defined in render.go tmplFuncs. */}}
+{{define "navlink"}}
+<a href="{{.Href}}" class="flex items-center gap-2 px-4 py-2 hover:bg-slate-800 {{if eq .Active .Item}}nav-active text-white font-medium{{end}}">
+  <span class="w-5 text-center">{{.Icon}}</span><span>{{.Label}}</span>
+</a>
+{{end}}
+
+{{define "navlink_badge"}}
+<a href="{{.Href}}" class="flex items-center gap-2 px-4 py-2 hover:bg-slate-800 {{if eq .Active .Item}}nav-active text-white font-medium{{end}}">
+  <span class="w-5 text-center">{{.Icon}}</span><span>{{.Label}}</span>
+  {{if .Badge}}<span class="ml-auto bg-amber-500 text-white text-xs rounded-full px-2">{{.Badge}}</span>{{end}}
+</a>
+{{end}}
