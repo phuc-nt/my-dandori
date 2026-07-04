@@ -244,6 +244,93 @@ func main() {
 			}
 		}
 	}
+
+	// --- 10. Slack alert: seed a governance event, dispatch it for real. ----
+	//        Posts a :rotating_light: alert to the stakeholder channel.
+	alertCh := os.Getenv("SLACK_STAKEHOLDER_CHANNEL")
+	if in.SlackXoxc == "" || alertCh == "" {
+		fmt.Println("STEP slack-alert SKIP no Slack token / SLACK_STAKEHOLDER_CHANNEL")
+	} else {
+		// A fresh 'flag' event the Alerter will pick up (dedup is per day+kind+
+		// payload-prefix, so the nonce keeps this from colliding with a prior run).
+		st.DB.Exec(`INSERT INTO events(run_id, ts, kind, ok, payload) VALUES(NULL, ?, 'flag', 1, ?)`,
+			store.Now(), "full-e2e "+nonce)
+		al := &slack.Alerter{St: st, Client: slack.New(in.SlackXoxc, in.SlackXoxd), Guard: guard, Channel: alertCh}
+		if err := al.Dispatch(); err != nil {
+			fmt.Println("STEP slack-alert FAIL:", err)
+		} else {
+			var posted int
+			st.Read().QueryRow(`SELECT count(*) FROM notifications WHERE kind='slack_alert'`).Scan(&posted)
+			fmt.Println("STEP slack-alert OK dispatched to", alertCh)
+			fmt.Println("MANUAL_CLEANUP: delete Slack alert message in", alertCh)
+		}
+	}
+
+	// --- 11. Flywheel publish: promote a seeded candidate run, publish the --
+	//        playbook card to Slack + Confluence for real.
+	if in.SlackXoxc == "" || alertCh == "" || in.ConfluenceSpaceID == "" {
+		fmt.Println("STEP flywheel SKIP needs Slack + SLACK_STAKEHOLDER_CHANNEL + CONFLUENCE_SPACE_ID")
+	} else {
+		// Seed a clean, well-specified 'done' run so DetectCandidates has a
+		// promotable candidate (needs a prompt_proxy event with Spec>0, no
+		// failed tool_result, not already a playbook). demo-seed alone does
+		// not produce the prompt_proxy shape the detector requires.
+		var seedAgent string
+		st.Read().QueryRow(`SELECT id FROM agents LIMIT 1`).Scan(&seedAgent)
+		runID := "e2e-fw-" + nonce
+		st.DB.Exec(`INSERT INTO runs(id, session_id, agent_id, status, started_at, cost_usd, model, task_key)
+			VALUES(?, ?, ?, 'done', ?, 0.42, 'anthropic/claude-sonnet-5', 'SCRUM-1')`,
+			runID, runID, seedAgent, store.Now())
+		st.DB.Exec(`INSERT INTO events(run_id, ts, kind, ok, payload) VALUES(?, ?, 'prompt_proxy', 1, ?)`,
+			runID, store.Now(), `{"w":3,"spec":7}`)
+		cands, _ := learn.DetectCandidates(st, cfg.LearnWindowDays)
+		if len(cands) == 0 {
+			fmt.Println("STEP flywheel SKIP no promotable candidate in seeded data")
+		} else {
+			pbID, err := learn.PromoteCandidate(st, cands[0], "full-e2e")
+			if err != nil {
+				fmt.Println("STEP flywheel FAIL promote:", err)
+			} else {
+				pub := &integrations.FlywheelPublisher{
+					St: st, Guard: guard,
+					Slack: slack.New(in.SlackXoxc, in.SlackXoxd), SlackChannel: alertCh,
+					Confluence: confluence.New(in.AtlassianSite, in.AtlassianEmail, in.AtlassianToken),
+					SpaceID:    in.ConfluenceSpaceID,
+				}
+				sr, cr, err := pub.Publish(pbID, "full-e2e")
+				if err != nil {
+					fmt.Println("STEP flywheel FAIL publish:", err)
+				} else {
+					fmt.Println("STEP flywheel OK slack=", sr, "confluence=", cr, "playbook", pbID)
+					fmt.Println("MANUAL_CLEANUP: delete flywheel Slack card in", alertCh, "+ its Confluence page")
+				}
+			}
+		}
+	}
+
+	// --- 12. Slack approval bridge: post a scratch pending approval to Slack -
+	//        (the vote roundtrip needs a human ✅/❌; we verify the post + that
+	//        the poller reads reactions without error).
+	if in.SlackXoxc == "" || alertCh == "" {
+		fmt.Println("STEP slack-approval SKIP no Slack token / channel")
+	} else {
+		res, _ := st.DB.Exec(`INSERT INTO approvals(run_id, action, reason, status, requested_at)
+			VALUES(NULL, ?, ?, 'pending', ?)`, "full-e2e "+nonce, "e2e approval "+nonce, store.Now())
+		aid, _ := res.LastInsertId()
+		br := &slack.ApprovalBridge{
+			St: st, Client: slack.New(in.SlackXoxc, in.SlackXoxd), Guard: guard,
+			Channel: alertCh, ConsoleURL: "http://127.0.0.1:4777",
+		}
+		br.Tick() // posts new + polls reactions
+		var slackTS string
+		st.Read().QueryRow(`SELECT COALESCE(slack_ts,'') FROM approvals WHERE id=?`, aid).Scan(&slackTS)
+		if slackTS != "" && slackTS != "dry-run" {
+			fmt.Println("STEP slack-approval OK posted ts", slackTS, "(react ✅/❌ in", alertCh, "to complete)")
+			fmt.Println("MANUAL_CLEANUP: delete Slack approval message in", alertCh)
+		} else {
+			fmt.Println("STEP slack-approval FAIL not posted (slack_ts=", slackTS, ")")
+		}
+	}
 }
 EOF
 PROBE_OUT="$(go run ./"$PROBE" "$NONCE" "$DB" 2>&1)"
@@ -258,7 +345,8 @@ echo
 # Assert each leg: OK or SKIP counts as pass; only FAIL fails.
 for leg in "jira OK created" "jira-transition OK" "confluence-write OK" \
            "github-comment OK" "github-review OK" "calendar OK" "sheets OK" \
-           "digest OK" "ai-review OK"; do
+           "digest OK" "ai-review OK" "slack-alert OK" "flywheel OK" \
+           "slack-approval OK"; do
   name="${leg% OK*}"
   if echo "$PROBE_OUT" | grep -q "^STEP $leg"; then ok "$name leg"
   elif echo "$PROBE_OUT" | grep -q "^STEP $name SKIP"; then skip "$name leg (skipped)"

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/phuc-nt/dandori/internal/store"
@@ -76,9 +77,13 @@ Agent: %s (window %d days, %d runs, $%.2f spent, %.0f%% of spend useful)
 		m.Autonomy.Value, m.Autonomy.Formula,
 		m.Reliability.Value, m.Reliability.Formula)
 
+	// Reasoning models (e.g. minimax-m2, o-series) spend part of the token
+	// budget on hidden reasoning before emitting content. A tight cap can be
+	// fully consumed by reasoning, leaving content empty. Budget enough for
+	// the reasoning pass plus the 2-4 sentence answer we actually want.
 	body, _ := json.Marshal(map[string]any{
 		"model":      a.Model,
-		"max_tokens": 250,
+		"max_tokens": 1200,
 		"messages":   []map[string]string{{"role": "user", "content": prompt}},
 	})
 	req, err := http.NewRequest("POST", a.BaseURL+"/v1/chat/completions", bytes.NewReader(body))
@@ -112,5 +117,11 @@ Agent: %s (window %d days, %d runs, $%.2f spent, %.0f%% of spend useful)
 	if len(out.Choices) == 0 {
 		return "", fmt.Errorf("openrouter: empty choices")
 	}
-	return out.Choices[0].Message.Content, nil
+	content := strings.TrimSpace(out.Choices[0].Message.Content)
+	if content == "" {
+		// A reasoning model consumed the whole budget on reasoning tokens and
+		// emitted no answer — distinguishable cause, not a silent blank.
+		return "", fmt.Errorf("openrouter: empty content (reasoning may have exhausted max_tokens)")
+	}
+	return content, nil
 }
