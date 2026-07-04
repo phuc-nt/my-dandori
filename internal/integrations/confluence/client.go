@@ -6,6 +6,7 @@ package confluence
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -14,6 +15,14 @@ import (
 	"strings"
 	"time"
 )
+
+// ErrPageExists is returned by CreatePage when a page with the same title
+// already exists in the space (Confluence 400). Titles are unique per space,
+// so this means the intended page is already there — callers that publish
+// idempotently (e.g. the daily fleet report / flywheel card) should treat it
+// as success rather than an error, especially when the local dedup record was
+// lost (fresh DB, reset) but the remote page persists.
+var ErrPageExists = errors.New("confluence: a page with this title already exists in the space")
 
 type Client struct {
 	BaseURL string // https://<site> (client appends /wiki/api/v2)
@@ -103,6 +112,9 @@ func (c *Client) CreatePage(spaceID, parentID, title, storageHTML string) (strin
 	b, code, err := c.do("POST", "/wiki/api/v2/pages", payload)
 	if err != nil {
 		return "", err
+	}
+	if code == 400 && bytes.Contains(b, []byte("same TITLE")) {
+		return "", ErrPageExists
 	}
 	if code != 200 && code != 201 {
 		return "", fmt.Errorf("confluence create page: HTTP %d: %.300s", code, b)

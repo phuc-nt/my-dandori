@@ -1,0 +1,25 @@
+{{/* UG5: full-screen TV-mode fleet wallboard. Deliberately does NOT extend
+     layout.html (no sidebar/nav/kill-switch header) — this is a read-only
+     screen meant to be left running unattended on a shared display. */}}
+{{define "layout.html"}}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dandori — Wallboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>body{font-family:system-ui,sans-serif}</style>
+</head>
+<body class="bg-slate-950 text-white min-h-screen p-10">
+  <header class="flex items-baseline justify-between mb-8">
+    <h1 class="text-4xl font-bold">⛩ Dandori Fleet</h1>
+    <span class="text-slate-500 text-lg">cập nhật mỗi 5s</span>
+  </header>
+  <div id="wallboard-fragment" hx-get="/wallboard/fragment" hx-trigger="load, every 5s" hx-swap="innerHTML">
+    {{template "wallboard_fragment" .}}
+  </div>
+</body>
+</html>
+{{end}}

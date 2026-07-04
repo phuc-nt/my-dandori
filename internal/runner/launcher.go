@@ -19,6 +19,7 @@ import (
 
 	"github.com/phuc-nt/dandori/internal/capture"
 	"github.com/phuc-nt/dandori/internal/config"
+	"github.com/phuc-nt/dandori/internal/learn"
 	"github.com/phuc-nt/dandori/internal/store"
 )
 
@@ -149,6 +150,11 @@ func (l *Launcher) reap(cmd *exec.Cmd, rp *RunProc, stdout, stderr io.Reader,
 	}
 	after := capture.SnapshotGit(cwd)
 	capture.FinalizeRun(l.Cfg, l.St, l.Ing, runID, cwd, runtime, before, after, started, exit)
+	// G6: automatic post-action check, best-effort. PostCheck never panics or
+	// returns an error to us — it is opt-in (default empty) and every failure
+	// path is logged inside it. The run row is already finalized above; this
+	// only annotates it with gate_results/a post_check event.
+	learn.PostCheck(l.Cfg, l.St, runID, cwd)
 	l.Reg.Remove(runID)
 }
 

@@ -1,5 +1,6 @@
 {{define "content"}}
 <h1 class="text-2xl font-bold mb-4">Runs</h1>
+{{template "saved_views" .}}
 <form class="flex gap-2 mb-4 flex-wrap"
       hx-get="/runs" hx-target="#runs-tbody" hx-swap="outerHTML" hx-trigger="change, submit">
   <input name="agent" placeholder="agent" value="{{.Q.Get "agent"}}" class="border rounded px-2 py-1 text-sm">

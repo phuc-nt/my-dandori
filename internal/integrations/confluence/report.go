@@ -1,6 +1,7 @@
 package confluence
 
 import (
+	"errors"
 	"fmt"
 	"html"
 	"strings"
@@ -40,6 +41,14 @@ func (r *Reporter) Post(actor string) (string, error) {
 		return "dry-run", nil
 	}
 	pageID, err := r.Client.CreatePage(r.SpaceID, r.Parent, title, body)
+	if errors.Is(err, ErrPageExists) {
+		// Today's report page already exists (title unique per space) — the
+		// local dedup record was lost but the page persists. Record the dedup
+		// so we stop retrying, and report it as already-done.
+		r.St.DB.Exec(`INSERT INTO notifications(kind, dedup, sent_at, detail)
+			VALUES('confluence', ?, ?, ?) ON CONFLICT(dedup) DO NOTHING`, dedup, store.Now(), "exists")
+		return "", nil
+	}
 	if err != nil {
 		return "", err
 	}

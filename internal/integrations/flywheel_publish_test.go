@@ -1,6 +1,7 @@
 package integrations
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -88,5 +89,37 @@ func TestPublishedCardHasNoHumanRanking(t *testing.T) {
 	}
 	if !strings.Contains(all, "Agent A") || !strings.Contains(all, "mẫu đáng nhân bản") {
 		t.Errorf("card missing pattern content: %s", all)
+	}
+}
+
+// existsConf simulates Confluence rejecting a duplicate page title (the
+// remote page already exists but the local dedup record was lost). The
+// publisher must treat that as idempotent success, not a failure.
+type existsConf struct{ calls int }
+
+func (c *existsConf) CreatePage(spaceID, parentID, title, body string) (string, error) {
+	c.calls++
+	return "", errors.New("confluence: a page with this title already exists in the space")
+}
+
+func TestPublishConfluencePageExistsIsIdempotentSuccess(t *testing.T) {
+	pub, _, _, st := flywheelFixture(t, false)
+	pub.Confluence = &existsConf{}
+	s, c, err := pub.Publish(1, "phucnt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The Confluence leg saw "already exists" — that is success, not "error:".
+	if strings.HasPrefix(c, "error:") {
+		t.Errorf("duplicate-title must be idempotent success, got confluence leg %q", c)
+	}
+	if s == "" {
+		t.Errorf("slack leg unexpectedly empty: %q", s)
+	}
+	// And it must have recorded a publish event (not aborted).
+	var n int
+	st.DB.QueryRow(`SELECT count(*) FROM events WHERE kind='playbook_published'`).Scan(&n)
+	if n != 1 {
+		t.Errorf("expected 1 playbook_published event, got %d", n)
 	}
 }

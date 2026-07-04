@@ -37,6 +37,14 @@ func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {
 		s.renderFragment(w, "runs", "runs_tbody", data)
 		return
 	}
+	// UG3: saved-views dropdown needs the list for this page plus the
+	// currently active filter querystring (what "save this view" persists).
+	views, err := s.querySavedViews("runs")
+	if err != nil {
+		views = nil
+	}
+	data["SavedViews"] = views
+	data["CurrentQuery"] = r.URL.RawQuery
 	s.render(w, r, "runs", data)
 }
 

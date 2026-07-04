@@ -1,0 +1,60 @@
+#!/bin/sh
+# Fake `gws` CLI for offline unit tests. Prints the keyring banner line
+# BEFORE JSON (matches real gws behavior), echoes canned JSON keyed on
+# argv[1]/argv[2], and honors FAKE_EXIT to simulate error exit codes.
+# When FAKE_ARGV_OUT is set, appends one line per invocation with args
+# joined by \x1f (unit separator) so tests can split on exact argument
+# boundaries even when a value contains spaces or JSON braces.
+
+if [ -n "$FAKE_ARGV_OUT" ]; then
+  sep=""
+  line=""
+  for arg in "$@"; do
+    line="${line}${sep}${arg}"
+    sep=$(printf '\037')
+  done
+  printf '%s\n' "$line" >> "$FAKE_ARGV_OUT"
+fi
+
+if [ -n "$FAKE_EXIT" ] && [ "$FAKE_EXIT" != "0" ]; then
+  exit "$FAKE_EXIT"
+fi
+
+echo "Using keyring backend: keyring"
+
+case "$1 $2" in
+  "sheets spreadsheets")
+    if [ "$3" = "create" ]; then
+      echo '{"spreadsheetId":"fake-sheet-id","spreadsheetUrl":"https://docs.google.com/spreadsheets/d/fake-sheet-id/edit"}'
+    else
+      echo '{"spreadsheetId":"fake-sheet-id","updatedRange":"Sheet1!A1:C3","updatedRows":3,"updatedColumns":3,"updatedCells":9}'
+    fi
+    ;;
+  "calendar events")
+    echo '{"kind":"calendar#event","id":"fake-event-id","htmlLink":"https://calendar.google.com/calendar/event?eid=fake"}'
+    ;;
+  "gmail users")
+    echo '{"id":"fake-message-id","threadId":"fake-message-id"}'
+    ;;
+  "drive files")
+    if [ "$3" = "export" ]; then
+      if [ -n "$FAKE_EXPORT_HUGE" ]; then
+        head -c 11000000 /dev/zero
+      elif [ -n "$FAKE_EXPORT_SECRET" ]; then
+        printf 'some notes\ntoken: ghp_abcdef1234567890\nmore notes'
+      else
+        printf 'fake exported content'
+      fi
+    else
+      if [ -n "$FAKE_DRIVE_INCLUDE_FOLDER" ]; then
+        echo '{"files":[{"id":"fake-file-id","name":"Fake Doc","mimeType":"application/vnd.google-apps.document","modifiedTime":"2026-07-01T00:00:00Z"},{"id":"fake-folder-id","name":"Fake Folder","mimeType":"application/vnd.google-apps.folder","modifiedTime":"2026-07-01T00:00:00Z"}],"incompleteSearch":false}'
+      else
+        echo '{"files":[{"id":"fake-file-id","name":"Fake Doc","mimeType":"application/vnd.google-apps.document","modifiedTime":"2026-07-01T00:00:00Z"}],"incompleteSearch":false}'
+      fi
+    fi
+    ;;
+  *)
+    echo '{}'
+    ;;
+esac
+exit 0

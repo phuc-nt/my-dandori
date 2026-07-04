@@ -8,17 +8,30 @@
 package observer
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/mail"
+	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/phuc-nt/dandori/internal/config"
 	"github.com/phuc-nt/dandori/internal/contexthub"
 	"github.com/phuc-nt/dandori/internal/govern"
+	"github.com/phuc-nt/dandori/internal/integrations"
+	"github.com/phuc-nt/dandori/internal/integrations/ghub"
+	"github.com/phuc-nt/dandori/internal/integrations/gws"
+	"github.com/phuc-nt/dandori/internal/integrations/jira"
 	"github.com/phuc-nt/dandori/internal/redact"
 	"github.com/phuc-nt/dandori/internal/store"
 )
+
+// applyWriteTimeout bounds every external client call made from an apply
+// case — a hung Jira/gh/gws call must not wedge the observer applier loop.
+const applyWriteTimeout = 30 * time.Second
 
 const actor = "dandori-observer"
 
@@ -256,9 +269,290 @@ func applyInsightAction(st *store.Store, typ string, insightID int64, decidedBy 
 		return govern.SetBand(st, ev.AgentID, ev.Band, decidedBy, fmt.Sprintf("approved request (insight #%d)", insightID))
 	case "context-promote", "context-company-edit":
 		return applyContextWrite(st, typ, evidence, insightID, decidedBy)
+	case "context-import":
+		return applyContextImport(st, evidence, insightID, decidedBy)
+	case "jira-transition":
+		return applyJiraTransition(st, evidence, insightID, decidedBy)
+	case "pr-review":
+		return applyPRReview(st, evidence, insightID, decidedBy)
+	case "calendar-event":
+		return applyCalendarEvent(st, evidence, insightID, decidedBy)
 	default:
 		return errPermanentApply{fmt.Errorf("unknown observer action type %q", typ)}
 	}
+}
+
+// jiraTransitionParams is the shared evidence shape for UC2, written by the
+// request handler (pinning the transition NAME at request time) and read
+// back here at apply time. The id is intentionally NOT pinned — Jira
+// transition ids are per-workflow and can be reassigned; only the name is a
+// stable human-meaningful pin (H3).
+type jiraTransitionParams struct {
+	Key            string `json:"key"`
+	TransitionName string `json:"transition_name"`
+}
+
+// applyJiraTransition re-fetches the issue's current transitions and matches
+// by the pinned NAME (H3 — the id captured at request time may be stale by
+// approval time). If the named transition is gone, the target legitimately
+// moved: this is a re-openable failure, not a silent loss — audit
+// jira_transition_apply_stale and file a fresh advisory insight so the human
+// can see what changed and re-request, then return errPermanentApply so the
+// spent approval isn't retried forever against a name that will never return.
+func applyJiraTransition(st *store.Store, evidence string, insightID int64, decidedBy string) error {
+	var ev jiraTransitionParams
+	if err := json.Unmarshal([]byte(evidence), &ev); err != nil {
+		return errPermanentApply{err}
+	}
+	if ev.Key == "" || ev.TransitionName == "" {
+		return errPermanentApply{fmt.Errorf("insight %d: invalid jira-transition params", insightID)}
+	}
+	cfg, err := config.Load("")
+	if err != nil {
+		return err // transient — retry
+	}
+	i := cfg.Integrations
+	if i.AtlassianSite == "" || i.AtlassianToken == "" {
+		return errPermanentApply{fmt.Errorf("insight %d: atlassian credentials not configured", insightID)}
+	}
+	c := jira.New(i.AtlassianSite, i.AtlassianEmail, i.AtlassianToken)
+	transitions, err := c.Transitions(ev.Key)
+	if err != nil {
+		return err // transient — retry
+	}
+	freshID := ""
+	for _, tr := range transitions {
+		if tr.Name == ev.TransitionName {
+			freshID = tr.ID
+			break
+		}
+	}
+	if freshID == "" {
+		return staleJiraTransition(st, ev, insightID, decidedBy)
+	}
+	guard := &integrations.Guard{Cfg: cfg, St: st}
+	if !guard.Allow("jira.transition", ev.Key+"->"+ev.TransitionName) {
+		return nil
+	}
+	if err := c.Transition(ev.Key, freshID); err != nil {
+		return err // transient — retry
+	}
+	a := &govern.Audit{St: st, Actor: decidedBy}
+	_, err = a.Append("jira_transition_applied", ev.Key, fmt.Sprintf("→ %s (insight #%d)", ev.TransitionName, insightID))
+	return err
+}
+
+// staleJiraTransition audits the stale target and re-emits a fresh advisory
+// insight (H3) so the human can see the transition disappeared and decide
+// whether to re-request against the issue's now-current transitions — the
+// consumed approval itself can never be re-approved (engine.go consume-once).
+func staleJiraTransition(st *store.Store, ev jiraTransitionParams, insightID int64, decidedBy string) error {
+	a := &govern.Audit{St: st, Actor: decidedBy}
+	detail := fmt.Sprintf("transition %q no longer available on %s (insight #%d)", ev.TransitionName, ev.Key, insightID)
+	if _, err := a.Append("jira_transition_apply_stale", ev.Key, detail); err != nil {
+		return err
+	}
+	if _, err := persistInsight(st, Insight{
+		Type: "jira_transition_stale", Subject: ev.Key,
+		Summary:  fmt.Sprintf("Không thể chuyển %s sang %q — trạng thái đã đổi. Vui lòng kiểm tra và gửi duyệt lại.", ev.Key, ev.TransitionName),
+		Evidence: map[string]any{"key": ev.Key, "transition_name": ev.TransitionName, "prior_insight_id": insightID},
+		Class:    "auto", Surface: "operator",
+	}); err != nil {
+		return err
+	}
+	return errPermanentApply{fmt.Errorf("insight %d: %s", insightID, detail)}
+}
+
+// prReviewParams is the shared evidence shape for UC4, pinning the PR's head
+// SHA at request time (H3 TOCTOU guard — a review approved against an old
+// diff must not silently apply to a since-changed PR).
+type prReviewParams struct {
+	Repo     string `json:"repo"`
+	Num      int    `json:"num"`
+	Decision string `json:"decision"`
+	Body     string `json:"body"`
+	HeadSHA  string `json:"head_sha"`
+}
+
+var validPRDecisions = map[string]bool{"approve": true, "request-changes": true, "comment": true}
+
+// applyPRReview re-checks the PR's current head SHA and state before
+// applying (H3) — merged, closed, or head-changed since the request means
+// the pinned diff no longer matches what the human approved, so the review
+// is refused rather than applied against a moving target.
+func applyPRReview(st *store.Store, evidence string, insightID int64, decidedBy string) error {
+	var ev prReviewParams
+	if err := json.Unmarshal([]byte(evidence), &ev); err != nil {
+		return errPermanentApply{err}
+	}
+	if ev.Repo == "" || ev.Num <= 0 || ev.HeadSHA == "" || !validPRDecisions[ev.Decision] {
+		return errPermanentApply{fmt.Errorf("insight %d: invalid pr-review params", insightID)}
+	}
+	cfg, err := config.Load("")
+	if err != nil {
+		return err // transient — retry
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), applyWriteTimeout)
+	defer cancel()
+	state, headSHA, err := PRCurrentState(ctx, ev.Repo, ev.Num)
+	if err != nil {
+		return err // transient — retry (gh transient failure, not a stale-target signal)
+	}
+	if state == "merged" || state == "closed" || headSHA != ev.HeadSHA {
+		return stalePRReview(st, ev, insightID, decidedBy, state, headSHA)
+	}
+	guard := &integrations.Guard{Cfg: cfg, St: st}
+	if err := ghub.PRReview(ctx, guard, ev.Repo, ev.Num, ev.Decision, ev.Body); err != nil {
+		if errors.Is(err, ghub.ErrPRReview) {
+			// gh exited 1 (self-approve/permissions/network blip) — cannot
+			// self-heal on retry with the same actor, but is not a
+			// legitimately-stale target either. Audit and stop retrying.
+			a := &govern.Audit{St: st, Actor: decidedBy}
+			_, _ = a.Append("pr_review_apply_failed", fmt.Sprintf("%s#%d", ev.Repo, ev.Num), err.Error())
+			return errPermanentApply{err}
+		}
+		return err // transient — retry
+	}
+	a := &govern.Audit{St: st, Actor: decidedBy}
+	_, err = a.Append("pr_review_applied", fmt.Sprintf("%s#%d", ev.Repo, ev.Num),
+		fmt.Sprintf("%s (insight #%d)", ev.Decision, insightID))
+	return err
+}
+
+// stalePRReview audits the moved target and files a fresh advisory insight
+// (H3) — never a silent loss of the human's spent approval.
+func stalePRReview(st *store.Store, ev prReviewParams, insightID int64, decidedBy, state, headSHA string) error {
+	a := &govern.Audit{St: st, Actor: decidedBy}
+	detail := fmt.Sprintf("%s#%d state=%s head=%.12s (pinned head=%.12s, insight #%d)",
+		ev.Repo, ev.Num, state, headSHA, ev.HeadSHA, insightID)
+	if _, err := a.Append("pr_review_apply_stale", fmt.Sprintf("%s#%d", ev.Repo, ev.Num), detail); err != nil {
+		return err
+	}
+	if _, err := persistInsight(st, Insight{
+		Type: "pr_review_stale", Subject: fmt.Sprintf("%s#%d", ev.Repo, ev.Num),
+		Summary:  fmt.Sprintf("Không thể review %s#%d — PR đã thay đổi (state=%s). Vui lòng kiểm tra và gửi duyệt lại.", ev.Repo, ev.Num, state),
+		Evidence: map[string]any{"repo": ev.Repo, "num": ev.Num, "state": state, "head_sha": headSHA, "prior_insight_id": insightID},
+		Class:    "auto", Surface: "operator",
+	}); err != nil {
+		return err
+	}
+	return errPermanentApply{fmt.Errorf("insight %d: %s", insightID, detail)}
+}
+
+// calendarEventParams is the shared evidence shape for UC9. IdemKey is
+// request-derived (hash of run+purpose+date) and checked against the
+// notifications dedup table before insert (H3) — a transient retry of an
+// already-applied insert must be a no-op, never a double booking.
+type calendarEventParams struct {
+	Title       string   `json:"title"`
+	Start       string   `json:"start"`
+	End         string   `json:"end"`
+	TZ          string   `json:"tz"`
+	Attendees   []string `json:"attendees"`
+	SendUpdates string   `json:"send_updates"`
+	IdemKey     string   `json:"idem_key"`
+}
+
+// applyCalendarEvent validates the pinned params, skips if this idem_key
+// already produced an event (H3 idempotent retry), then inserts via gws.
+func applyCalendarEvent(st *store.Store, evidence string, insightID int64, decidedBy string) error {
+	var ev calendarEventParams
+	if err := json.Unmarshal([]byte(evidence), &ev); err != nil {
+		return errPermanentApply{err}
+	}
+	if ev.Title == "" || ev.Start == "" || ev.End == "" || ev.IdemKey == "" {
+		return errPermanentApply{fmt.Errorf("insight %d: invalid calendar-event params", insightID)}
+	}
+	startT, err := time.Parse(time.RFC3339, ev.Start)
+	if err != nil {
+		return errPermanentApply{fmt.Errorf("insight %d: bad start time: %w", insightID, err)}
+	}
+	endT, err := time.Parse(time.RFC3339, ev.End)
+	if err != nil {
+		return errPermanentApply{fmt.Errorf("insight %d: bad end time: %w", insightID, err)}
+	}
+	if !startT.Before(endT) {
+		return errPermanentApply{fmt.Errorf("insight %d: start must be before end", insightID)}
+	}
+	// Reserve the idem_key BEFORE the external write, using the UNIQUE
+	// dedup constraint as the lock. If our INSERT wins (1 row affected) we
+	// own this event and proceed; if it was a no-op (row already present),
+	// a prior attempt already claimed — and inserted — this event, so we
+	// must NOT insert again. This closes the crash window between the
+	// external CalendarInsert and recording the dedup row (review HIGH-1):
+	// a check-then-write ordering could duplicate the calendar event on a
+	// retry that crashed after inserting but before recording.
+	res, err := st.DB.Exec(`INSERT INTO notifications(kind, dedup, sent_at, detail)
+		VALUES('calendar_event', ?, ?, ?) ON CONFLICT(dedup) DO NOTHING`,
+		ev.IdemKey, store.Now(), ev.Title)
+	if err != nil {
+		return err // transient — retry
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil // already claimed under this idem_key — retry is a no-op
+	}
+	cfg, err := config.Load("")
+	if err != nil {
+		return err // transient — retry
+	}
+	guard := &integrations.Guard{Cfg: cfg, St: st}
+	runner := gws.NewRunner(guard)
+	tz := ev.TZ
+	if tz == "" {
+		tz = "UTC"
+	}
+	var attendees []gws.CalendarAttendee
+	for _, email := range ev.Attendees {
+		attendees = append(attendees, gws.CalendarAttendee{Email: email})
+	}
+	calEv := gws.CalendarEvent{
+		Summary:   ev.Title,
+		Start:     gws.CalendarDateTime{DateTime: ev.Start, TimeZone: tz},
+		End:       gws.CalendarDateTime{DateTime: ev.End, TimeZone: tz},
+		Attendees: attendees,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), applyWriteTimeout)
+	defer cancel()
+	if _, _, err = runner.CalendarInsert(ctx, calEv, ev.SendUpdates); err != nil {
+		// The external write failed — release our reservation so a genuine
+		// retry can attempt again rather than being masked as "done".
+		st.DB.Exec(`DELETE FROM notifications WHERE dedup = ?`, ev.IdemKey)
+		return err // transient — retry
+	}
+	a := &govern.Audit{St: st, Actor: decidedBy}
+	_, err = a.Append("calendar_event_applied", ev.Title, fmt.Sprintf("insight #%d", insightID))
+	return err
+}
+
+// PRCurrentState reads a PR's current state and head SHA via `gh pr view`
+// (read-only, no Guard needed — matches ghub's read pattern) — arg-slice,
+// ctx-bounded, no shell. Exported so the request handler (UC4) can pin the
+// head SHA at request time using the exact same read apply-time re-validates
+// against (H3 — one implementation, no schema drift between the two calls).
+func PRCurrentState(ctx context.Context, repo string, num int) (state, headSHA string, err error) {
+	ctx, cancel := context.WithTimeout(ctx, applyWriteTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "gh", "pr", "view", strconv.Itoa(num), "--repo", repo,
+		"--json", "headRefOid,state").Output()
+	if err != nil {
+		return "", "", fmt.Errorf("gh pr view %s#%d: %w", repo, num, err)
+	}
+	var resp struct {
+		HeadRefOid string `json:"headRefOid"`
+		State      string `json:"state"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return "", "", fmt.Errorf("gh pr view %s#%d: parse: %w", repo, num, err)
+	}
+	return strings.ToLower(resp.State), resp.HeadRefOid, nil
+}
+
+// ValidateEmail is used by the request handler (M5) to reject non-email
+// attendees before they ever reach RequestAction. Kept here (not in web) so
+// the same validation guards both the request path and any future caller.
+func ValidateEmail(s string) bool {
+	addr, err := mail.ParseAddress(s)
+	return err == nil && addr.Address == s
 }
 
 // applyContextWrite applies an approved company-context write (a promote from
@@ -312,6 +606,51 @@ func applyContextWrite(st *store.Store, typ, evidence string, insightID int64, d
 	}
 	a := &govern.Audit{St: st, Actor: decidedBy}
 	_, err := a.Append(auditAction, "company:*", note)
+	return err
+}
+
+// contextImportParams is UC6's evidence shape: the FULL Drive doc body
+// pinned at request time (C1 — the human approved these exact bytes), plus
+// the Drive provenance fields written into SaveContext's note.
+type contextImportParams struct {
+	Layer   string `json:"layer"`
+	Target  string `json:"target"`
+	Content string `json:"content"`
+	DocID   string `json:"doc_id"`
+	DocName string `json:"doc_name"`
+}
+
+// applyContextImport is UC6's only path from an approved Drive import to a
+// written context version — Search/Review (internal/integrations/gws) never
+// call SaveContext, and neither does the request handler; this is the sole
+// call site (C1). Re-scans for secrets as defense in depth (the reviewer's
+// pre-render scan already ran once at request time, but content is
+// untrusted external input so a second check costs nothing) and tags the
+// saved version with a Drive provenance note so imported layers are
+// visibly distinct from operator-authored policy in the effective-context
+// view.
+func applyContextImport(st *store.Store, evidence string, insightID int64, decidedBy string) error {
+	var ev contextImportParams
+	if err := json.Unmarshal([]byte(evidence), &ev); err != nil {
+		return errPermanentApply{err}
+	}
+	if ev.Content == "" {
+		return errPermanentApply{fmt.Errorf("insight %d: no content to import", insightID)}
+	}
+	if frag := contexthub.SecretFragment(ev.Content); frag != "" {
+		return errPermanentApply{fmt.Errorf("insight %d: %w", insightID, contexthub.ErrSecretInContent)}
+	}
+	hub := contexthub.New(st)
+	note := fmt.Sprintf("imported from Drive: %s (%s)", ev.DocName, ev.DocID)
+	if _, err := hub.SaveContext(ev.Layer, ev.Target, ev.Content, decidedBy, note); err != nil {
+		if err == contexthub.ErrSecretInContent {
+			return errPermanentApply{err}
+		}
+		return err
+	}
+	a := &govern.Audit{St: st, Actor: decidedBy}
+	_, err := a.Append("context_imported_drive", ev.Layer+":"+ev.Target,
+		fmt.Sprintf("doc %s (%s), insight #%d", ev.DocName, ev.DocID, insightID))
 	return err
 }
 

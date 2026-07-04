@@ -1,0 +1,52 @@
+{{/* UG5: the polled numbers for the TV wallboard. Expects .Wallboard
+     (WallboardData). No action buttons — TV mode is read-only. */}}
+{{define "wallboard_fragment"}}
+<div class="grid grid-cols-3 gap-8">
+  <div class="bg-slate-900 rounded-xl p-8">
+    <div class="text-slate-400 text-xl mb-2">🏃 Đang chạy</div>
+    <div class="text-7xl font-bold">{{len .Wallboard.Running}}</div>
+  </div>
+
+  <div class="bg-slate-900 rounded-xl p-8">
+    <div class="text-slate-400 text-xl mb-2">💰 Chi tiêu tháng</div>
+    {{if .Wallboard.HasBudget}}
+    <div class="text-5xl font-bold {{if ge .Wallboard.SpendPct 90.0}}text-red-500{{else if ge .Wallboard.SpendPct 75.0}}text-amber-400{{else}}text-green-400{{end}}">
+      {{usd .Wallboard.SpendUSD}} <span class="text-2xl text-slate-500">/ {{usd .Wallboard.BudgetUSD}}</span>
+    </div>
+    <div class="bg-slate-700 rounded h-4 mt-4 overflow-hidden">
+      <div class="h-4 {{if ge .Wallboard.SpendPct 90.0}}bg-red-500{{else if ge .Wallboard.SpendPct 75.0}}bg-amber-400{{else}}bg-green-400{{end}}"
+           style="width: {{if ge .Wallboard.SpendPct 100.0}}100{{else}}{{score .Wallboard.SpendPct}}{{end}}%"></div>
+    </div>
+    {{else}}
+    <div class="text-5xl font-bold text-slate-500">{{usd .Wallboard.SpendUSD}}</div>
+    <div class="text-slate-500 text-sm mt-2">chưa đặt ngân sách</div>
+    {{end}}
+  </div>
+
+  <div class="bg-slate-900 rounded-xl p-8">
+    <div class="text-slate-400 text-xl mb-2">⏳ Hàng chờ xử lý</div>
+    <div class="text-7xl font-bold {{if gt .Wallboard.QueueDepth 0}}text-amber-400{{end}}">{{.Wallboard.QueueDepth}}</div>
+    <div class="text-slate-500 text-sm mt-2">phê duyệt + cờ đang mở</div>
+  </div>
+</div>
+
+<div class="mt-10">
+  <div class="text-slate-400 text-lg mb-3">Runs đang chạy</div>
+  {{if .Wallboard.Running}}
+  <table class="w-full text-lg">
+    <tbody>
+      {{range .Wallboard.Running}}
+      <tr class="border-t border-slate-800">
+        <td class="py-2 text-slate-300">{{.AgentID}}</td>
+        <td class="py-2 text-slate-500">{{.Project}}</td>
+        <td class="py-2 text-slate-500">{{.TaskKey}}</td>
+        <td class="py-2 text-right text-slate-400">{{usd .CostUSD}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <div class="text-slate-600 text-xl">không có run nào đang chạy</div>
+  {{end}}
+</div>
+{{end}}

@@ -20,6 +20,57 @@
   </div>
 </div>
 
+<div class="grid md:grid-cols-2 gap-4 mb-6">
+  {{if .Run.TaskKey}}
+  <div class="bg-white border rounded-lg p-4">
+    <div class="font-semibold text-sm mb-2">Đổi trạng thái Jira ({{.Run.TaskKey}})</div>
+    <div id="transitions-{{.Run.ID}}"
+         hx-get="/runs/{{.Run.ID}}/transitions" hx-trigger="load" hx-swap="innerHTML">
+      <span class="text-xs text-gray-400">Đang tải…</span>
+    </div>
+  </div>
+  {{end}}
+
+  <div class="bg-white border rounded-lg p-4">
+    <div class="font-semibold text-sm mb-2">Review PR trên GitHub</div>
+    <form method="post" action="/runs/{{.Run.ID}}/pr-review-request" class="flex flex-col gap-2">
+      <div class="flex gap-2">
+        <input name="repo" placeholder="owner/repo" required class="border rounded px-2 py-1 text-sm flex-1">
+        <input name="num" type="number" min="1" placeholder="PR #" required class="border rounded px-2 py-1 text-sm w-24">
+      </div>
+      <select name="decision" class="border rounded px-2 py-1 text-sm">
+        <option value="approve">Duyệt PR</option>
+        <option value="request-changes">Yêu cầu sửa</option>
+        <option value="comment">Chỉ bình luận</option>
+      </select>
+      <textarea name="body" placeholder="Nội dung (tuỳ chọn)" class="border rounded px-2 py-1 text-sm"></textarea>
+      <button class="bg-slate-700 text-white text-sm px-3 py-1.5 rounded self-start">Gửi duyệt</button>
+    </form>
+  </div>
+
+  <div class="bg-white border rounded-lg p-4">
+    <div class="font-semibold text-sm mb-2">Tạo lịch review</div>
+    <form method="post" action="/runs/{{.Run.ID}}/calendar-request" class="flex flex-col gap-2">
+      <input name="title" placeholder="Tiêu đề" required class="border rounded px-2 py-1 text-sm">
+      <div class="flex gap-2">
+        <input name="start" type="datetime-local" required class="border rounded px-2 py-1 text-sm flex-1">
+        <input name="end" type="datetime-local" required class="border rounded px-2 py-1 text-sm flex-1">
+      </div>
+      <input name="tz" placeholder="Múi giờ (vd: Asia/Ho_Chi_Minh)" class="border rounded px-2 py-1 text-sm">
+      <input name="attendees" placeholder="Email người tham dự, cách nhau bởi dấu phẩy" class="border rounded px-2 py-1 text-sm">
+      <button class="bg-slate-700 text-white text-sm px-3 py-1.5 rounded self-start">Gửi duyệt</button>
+    </form>
+  </div>
+
+  <div class="bg-white border rounded-lg p-4">
+    <div class="font-semibold text-sm mb-2">Kết quả kiểm tra chất lượng</div>
+    <div id="gate-results-{{.Run.ID}}"
+         hx-get="/runs/{{.Run.ID}}/gate-results" hx-trigger="load" hx-swap="innerHTML">
+      <span class="text-xs text-gray-400">Đang tải…</span>
+    </div>
+  </div>
+</div>
+
 {{if .IsConsoleRun}}
 <!-- Live console pane: status badge + Kill + streamed stdout (v6) -->
 <div class="bg-white border rounded-lg p-4 mb-6">
@@ -97,4 +148,44 @@
 <!-- re-render the poller with the bumped cursor (out-of-band) -->
 <div id="log-poller" hx-swap-oob="true"
      {{if not .Terminal}}hx-get="/runs/{{.ID}}/log-tail?since={{.MaxID}}" hx-trigger="every 2s" hx-target="#log-container" hx-swap="beforeend"{{end}}></div>
+{{end}}
+
+{{define "run_transitions"}}
+{{if .Transitions}}
+<form method="post" action="/runs/{{.RunID}}/transition-request" class="flex gap-2">
+  <select name="transition_name" class="border rounded px-2 py-1 text-sm flex-1">
+    {{range .Transitions}}<option value="{{.Name}}">{{.Name}} → {{.To.Name}}</option>{{end}}
+  </select>
+  <button class="bg-slate-700 text-white text-sm px-3 py-1.5 rounded">Gửi duyệt</button>
+</form>
+{{else}}
+<span class="text-xs text-gray-400">Không có trạng thái nào khả dụng cho {{.TaskKey}}.</span>
+{{end}}
+{{end}}
+
+{{define "run_gate_results"}}
+<div id="gate-results-{{.RunID}}">
+  {{range .GateResults}}
+  <div class="flex items-center justify-between py-1.5 border-b last:border-0 text-sm gap-2">
+    <div class="flex items-center gap-2">
+      <span class="{{if .OK}}text-green-600{{else}}text-red-600{{end}} font-semibold">{{if .OK}}✓{{else}}✗{{end}}</span>
+      <span class="font-mono">{{.CheckName}}</span>
+    </div>
+    {{if .OK}}
+    <span class="text-xs text-gray-400">pass</span>
+    {{else if .Overridden}}
+    <span class="text-xs text-amber-600" title="{{.Reason}}">đã bỏ qua bởi {{.OverriddenBy}} ({{.OverriddenAt}}): {{.Reason}}</span>
+    {{else}}
+    <form hx-post="/runs/{{$.RunID}}/override-gate" hx-target="#gate-results-{{$.RunID}}" hx-swap="outerHTML"
+          class="flex gap-1 items-center">
+      <input type="hidden" name="check_name" value="{{.CheckName}}">
+      <input name="reason" placeholder="lý do bỏ qua (bắt buộc)" required class="border rounded px-2 py-1 text-xs w-48">
+      <button class="bg-amber-500 text-white text-xs px-2 py-1 rounded">Ghi đè</button>
+    </form>
+    {{end}}
+  </div>
+  {{else}}
+  <span class="text-xs text-gray-400">Chưa có kết quả kiểm tra chất lượng cho lần chạy này.</span>
+  {{end}}
+</div>
 {{end}}

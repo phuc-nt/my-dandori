@@ -1,7 +1,9 @@
 package web
 
 import (
+	"encoding/json"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/phuc-nt/dandori/internal/govern"
@@ -31,6 +33,12 @@ type ApprovalRow struct {
 	RunID, Action, Reason, Status           string
 	RequestedAt, DecidedAt, DecidedBy, Note string
 	Channel                                 string
+	// ImportContent carries the FULL pinned Drive body for context-import
+	// approvals only (C1 — this IS the operator inbox where the human
+	// approves; the body must be visible here, not truncated, so a payload
+	// cannot hide past a preview boundary). Empty for every other action type.
+	ImportContent string
+	ImportRunes   int
 }
 
 // BudgetRow shows a budget scope with its live spend and end-of-month
@@ -114,17 +122,53 @@ func (s *Server) queryApprovals(status string) ([]ApprovalRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var out []ApprovalRow
 	for rows.Next() {
 		var a ApprovalRow
 		if err := rows.Scan(&a.ID, &a.RunID, &a.Action, &a.Reason, &a.Status, &a.RequestedAt,
 			&a.DecidedAt, &a.DecidedBy, &a.Note, &a.Channel); err != nil {
+			rows.Close()
 			return nil, err
 		}
 		out = append(out, a)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	// Second pass, after the approvals cursor is closed: Store.DB is a
+	// single-connection pool (SetMaxOpenConns(1)), so a nested query while
+	// `rows` is still open would deadlock waiting for the same connection.
+	for i := range out {
+		if strings.HasPrefix(out[i].Action, "observer:context-import:") {
+			s.loadImportContent(&out[i])
+		}
+	}
+	return out, nil
+}
+
+// loadImportContent fills ImportContent/ImportRunes for a context-import
+// approval by reading the linked insight's evidence (C1 — the operator inbox
+// at /reviews is where the human actually approves, so the FULL pinned body
+// must render here, not just on the pre-submission /contexts preview).
+// Best-effort: a lookup failure leaves ImportContent empty rather than
+// failing the whole review-queue render.
+func (s *Server) loadImportContent(a *ApprovalRow) {
+	var evidence string
+	if err := s.Store.DB.QueryRow(
+		`SELECT evidence FROM insights WHERE approval_id = ?`, a.ID,
+	).Scan(&evidence); err != nil {
+		return
+	}
+	var ev struct {
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal([]byte(evidence), &ev); err != nil {
+		return
+	}
+	a.ImportContent = ev.Content
+	a.ImportRunes = len([]rune(ev.Content))
 }
 
 func (s *Server) queryFlags(status string) ([]FlagRow, error) {

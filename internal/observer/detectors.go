@@ -20,8 +20,36 @@ const (
 	underusedSharePct    = 5   // agent share below this → underused
 	overSteerPerRun      = 5.0 // avg mid-run msgs per run — HIGH on purpose
 	overSteerMinRuns     = 10  // sustained, not a bad afternoon
-	playbookMinGrade     = "B" // A or B runs qualify as playbook candidates
+	// defaultGateMinGrade is the fallback playbook-candidate grade floor when
+	// the operator has not set the UE3 "gate_min_grade" setting yet.
+	defaultGateMinGrade = "C"
 )
+
+// gradeRank orders letters worst→best so minGrade comparisons ("is this run's
+// grade at least the configured floor?") are a simple rank comparison.
+var gradeRank = map[string]int{"F": 0, "D": 1, "C": 2, "B": 3, "A": 4}
+
+// minGrade is UE3's global quality-gate floor: the minimum grade a run needs
+// to qualify as a playbook candidate. Read from the settings table (set via
+// the /gate-thresholds form); falls back to defaultGateMinGrade when unset so
+// existing behavior is preserved until an operator opts into a stricter (or
+// looser) floor.
+func minGrade(st *store.Store) string {
+	if v := st.Setting("gate_min_grade"); v != "" {
+		if _, ok := gradeRank[v]; ok {
+			return v
+		}
+	}
+	return defaultGateMinGrade
+}
+
+// meetsMinGrade reports whether letter is at or above floor in the A>B>C>D>F
+// ranking (unknown letters never meet the floor).
+func meetsMinGrade(letter, floor string) bool {
+	lr, ok1 := gradeRank[letter]
+	fr, ok2 := gradeRank[floor]
+	return ok1 && ok2 && lr >= fr
+}
 
 func detectAll(st *store.Store, cfg *config.Config) ([]Insight, error) {
 	var out []Insight
@@ -164,9 +192,10 @@ func detectOperatorOverSteering(st *store.Store, cfg *config.Config) ([]Insight,
 // detectPlaybookCandidates surfaces high-grade agents' clean recent runs
 // that are not captured as playbooks yet — the flywheel's intake (P4).
 func detectPlaybookCandidates(st *store.Store, board []learn.LeaderboardRow) ([]Insight, error) {
+	floor := minGrade(st)
 	var out []Insight
 	for _, r := range board {
-		if r.Grade.LowConfidence || (r.Grade.Letter != "A" && r.Grade.Letter != playbookMinGrade) {
+		if r.Grade.LowConfidence || !meetsMinGrade(r.Grade.Letter, floor) {
 			continue
 		}
 		var runID string

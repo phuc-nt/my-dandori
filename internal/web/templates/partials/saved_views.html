@@ -1,0 +1,34 @@
+{{/* UG3: saved-views dropdown + "save this view" button for a filtered
+     list page. Expects .SavedViews ([]SavedViewRow), .Page (string) and
+     .CurrentQuery (raw querystring of the active filters). Name is rendered
+     through html/template's default auto-escaping — no raw/HTML funcs used
+     here, so a name like <script> renders as inert text. */}}
+{{define "saved_views"}}
+<div id="saved-views" class="flex items-center gap-2 mb-3 text-sm flex-wrap">
+  <label class="text-gray-500">Views đã lưu:</label>
+  {{if .SavedViews}}
+  <select class="border rounded px-2 py-1"
+          onchange="if(this.value){window.location=this.value}">
+    <option value="">— chọn view —</option>
+    {{range .SavedViews}}
+    <option value="/views/{{.ID}}/apply">{{.Name}}</option>
+    {{end}}
+  </select>
+  {{range .SavedViews}}
+  <form method="post" action="/views/{{.ID}}/delete" onsubmit="return confirm('Xoá view {{.Name}}?')">
+    <button class="text-red-500 hover:underline" title="Xoá view {{.Name}}">✕ {{.Name}}</button>
+  </form>
+  {{end}}
+  {{else}}
+  <span class="text-gray-400">chưa có view nào</span>
+  {{end}}
+
+  <form method="post" action="/views/save" class="flex items-center gap-1 ml-auto">
+    <input type="hidden" name="page" value="{{.Page}}">
+    <input type="hidden" name="querystring" value="{{.CurrentQuery}}">
+    <input name="name" placeholder="tên view" maxlength="80" required
+           class="border rounded px-2 py-1 w-32">
+    <button class="bg-slate-600 text-white px-3 py-1 rounded">Lưu view này</button>
+  </form>
+</div>
+{{end}}

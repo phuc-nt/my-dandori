@@ -19,7 +19,7 @@ var uiFS embed.FS
 var pageNames = []string{
 	"standup", "dash_org", "dash_project", "dash_agent",
 	"runs", "run_detail", "run_compare", "reviews", "budgets", "provenance", "rules", "spikes", "playbooks",
-	"chat", "exec_home", "contexts", "launch",
+	"chat", "exec_home", "contexts", "launch", "gate_thresholds", "wallboard",
 }
 
 type renderer struct {
