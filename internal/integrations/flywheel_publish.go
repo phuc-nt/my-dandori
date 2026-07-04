@@ -3,10 +3,19 @@ package integrations
 import (
 	"fmt"
 	"html"
+	"strings"
 	"time"
 
 	"github.com/phuc-nt/dandori/internal/store"
 )
+
+// pageAlreadyExists reports whether a CreatePage error means the page is
+// already there (title unique per space). Matched by message rather than a
+// typed sentinel because ConfluencePoster is a narrow interface and the
+// confluence package imports this one (importing it back would cycle).
+func pageAlreadyExists(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "already exists")
+}
 
 // FlywheelPublisher distributes a playbook card to the shared channels.
 // The card describes a PATTERN (what made the run work) attributed to an
@@ -90,6 +99,12 @@ func (p *FlywheelPublisher) Publish(playbookID int64, actor string) (slackRes, c
 	confRes = p.leg(fmt.Sprintf("flywheel:confluence:%d:%s", playbookID, date),
 		"create playbook card page", card.Name, func() error {
 			_, err := p.Confluence.CreatePage(p.SpaceID, "", "Playbook: "+card.Name+" ("+date+")", card.confluenceHTML())
+			// Today's card already existing means it's already published —
+			// idempotent success, not a failure (e.g. local dedup record lost
+			// but the remote page persists).
+			if pageAlreadyExists(err) {
+				return nil
+			}
 			return err
 		})
 	_, _ = p.St.DB.Exec(`INSERT INTO events(run_id, ts, kind, tool_name, ok, payload)

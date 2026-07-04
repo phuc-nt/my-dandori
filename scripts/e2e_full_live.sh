@@ -79,8 +79,12 @@ package main
 
 import (
 	"context"
+	netjson "encoding/json"
 	"fmt"
+	nethttp "net/http"
+	neturl "net/url"
 	"os"
+	netstrings "strings"
 	"time"
 
 	"github.com/phuc-nt/dandori/internal/config"
@@ -298,8 +302,14 @@ func main() {
 					SpaceID:    in.ConfluenceSpaceID,
 				}
 				sr, cr, err := pub.Publish(pbID, "full-e2e")
+				// Assert BOTH legs honestly: an "error:" in either per-leg
+				// result is a real failure (a prior run's silent pass on the
+				// Confluence duplicate-title 400 hid a bug — now fixed to be
+				// idempotent, so a rerun must show "sent"/"deduped", not error).
 				if err != nil {
 					fmt.Println("STEP flywheel FAIL publish:", err)
+				} else if netstrings.HasPrefix(sr, "error:") || netstrings.HasPrefix(cr, "error:") {
+					fmt.Println("STEP flywheel FAIL leg error slack=", sr, "confluence=", cr)
 				} else {
 					fmt.Println("STEP flywheel OK slack=", sr, "confluence=", cr, "playbook", pbID)
 					fmt.Println("MANUAL_CLEANUP: delete flywheel Slack card in", alertCh, "+ its Confluence page")
@@ -308,9 +318,11 @@ func main() {
 		}
 	}
 
-	// --- 12. Slack approval bridge: post a scratch pending approval to Slack -
-	//        (the vote roundtrip needs a human ✅/❌; we verify the post + that
-	//        the poller reads reactions without error).
+	// --- 12. Slack approval bridge: post a scratch pending approval, then --
+	//        prove the FULL poll->apply branch. The bridge only READS
+	//        reactions (a human normally reacts), so we add a real ✅ via the
+	//        Slack API with the same tokens, re-Tick, and assert govern.Decide
+	//        flipped the approval to 'approved'.
 	if in.SlackXoxc == "" || alertCh == "" {
 		fmt.Println("STEP slack-approval SKIP no Slack token / channel")
 	} else {
@@ -320,17 +332,63 @@ func main() {
 		br := &slack.ApprovalBridge{
 			St: st, Client: slack.New(in.SlackXoxc, in.SlackXoxd), Guard: guard,
 			Channel: alertCh, ConsoleURL: "http://127.0.0.1:4777",
+			// Empty Approvers = anyone in the channel may decide, so the token
+			// owner's own ✅ counts (single-principal test).
 		}
-		br.Tick() // posts new + polls reactions
+		br.Tick() // posts the approval
 		var slackTS string
 		st.Read().QueryRow(`SELECT COALESCE(slack_ts,'') FROM approvals WHERE id=?`, aid).Scan(&slackTS)
-		if slackTS != "" && slackTS != "dry-run" {
-			fmt.Println("STEP slack-approval OK posted ts", slackTS, "(react ✅/❌ in", alertCh, "to complete)")
-			fmt.Println("MANUAL_CLEANUP: delete Slack approval message in", alertCh)
-		} else {
+		if slackTS == "" || slackTS == "dry-run" {
 			fmt.Println("STEP slack-approval FAIL not posted (slack_ts=", slackTS, ")")
+		} else {
+			fmt.Println("STEP slack-approval OK posted ts", slackTS)
+			fmt.Println("MANUAL_CLEANUP: delete Slack approval message in", alertCh)
+			// Inject a real ✅ reaction (raw Slack API, same tokens).
+			if err := addSlackReaction(in.SlackXoxc, in.SlackXoxd, alertCh, slackTS, "white_check_mark"); err != nil {
+				fmt.Println("STEP slack-approval-apply FAIL add reaction:", err)
+			} else {
+				time.Sleep(1500 * time.Millisecond) // let Slack register it
+				br.Tick()                            // polls reactions -> govern.Decide
+				var status string
+				st.Read().QueryRow(`SELECT status FROM approvals WHERE id=?`, aid).Scan(&status)
+				if status == "approved" {
+					fmt.Println("STEP slack-approval-apply OK reaction -> approved (poll->apply proven)")
+				} else {
+					fmt.Println("STEP slack-approval-apply FAIL status still", status)
+				}
+			}
 		}
 	}
+}
+
+// addSlackReaction adds an emoji to a posted message via the raw Slack Web
+// API using the same browser tokens the client uses. Kept in the test probe
+// (not the product) — Dandori only READS reactions; a human normally reacts.
+func addSlackReaction(xoxc, xoxd, channel, ts, name string) error {
+	form := neturl.Values{"channel": {channel}, "timestamp": {ts}, "name": {name}}
+	req, err := nethttp.NewRequest("POST", "https://slack.com/api/reactions.add",
+		netstrings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+xoxc)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", "d="+xoxd)
+	resp, err := (&nethttp.Client{Timeout: 15 * time.Second}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	var env struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	netjson.NewDecoder(resp.Body).Decode(&env)
+	// "already_reacted" is fine for idempotent reruns.
+	if !env.OK && env.Error != "already_reacted" {
+		return fmt.Errorf("reactions.add: %s", env.Error)
+	}
+	return nil
 }
 EOF
 PROBE_OUT="$(go run ./"$PROBE" "$NONCE" "$DB" 2>&1)"
@@ -346,7 +404,7 @@ echo
 for leg in "jira OK created" "jira-transition OK" "confluence-write OK" \
            "github-comment OK" "github-review OK" "calendar OK" "sheets OK" \
            "digest OK" "ai-review OK" "slack-alert OK" "flywheel OK" \
-           "slack-approval OK"; do
+           "slack-approval OK" "slack-approval-apply OK"; do
   name="${leg% OK*}"
   if echo "$PROBE_OUT" | grep -q "^STEP $leg"; then ok "$name leg"
   elif echo "$PROBE_OUT" | grep -q "^STEP $name SKIP"; then skip "$name leg (skipped)"
