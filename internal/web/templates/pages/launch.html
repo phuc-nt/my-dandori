@@ -1,0 +1,41 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-1">{{if .RetryOf}}Chạy lại (sửa prompt){{else}}Phóng một phiên agent{{end}}</h1>
+<p class="text-gray-500 mb-4">
+  {{if .RetryOf}}Chạy lại từ run <a class="text-blue-600 font-mono" href="/runs/{{.RetryOf}}">{{.RetryOf}}</a> — sửa prompt rồi phóng phiên mới.
+  {{else}}Chọn agent + thư mục dự án + nhập việc cần làm. Phiên chạy nền, xem log trực tiếp ở trang chi tiết.{{end}}
+</p>
+
+{{if not .Agents}}
+<div class="bg-amber-50 border border-amber-200 rounded p-4 text-amber-800">
+  Chưa cấu hình <code>agent_binaries</code> trong config (cần đường dẫn tuyệt đối tới <code>claude</code>). Ví dụ:
+  <pre class="mt-2 text-xs">agent_binaries:
+  claude: /Users/ban/.local/bin/claude</pre>
+</div>
+{{else}}
+<form class="bg-white border rounded-lg p-5 max-w-2xl"
+      hx-post="{{if .RetryOf}}/runs/{{.RetryOf}}/retry{{else}}/launch{{end}}"
+      hx-target="#launch-error" hx-swap="innerHTML">
+  <div class="grid grid-cols-2 gap-4 mb-3">
+    <label class="text-sm">Agent<br>
+      <select name="agent" class="border rounded px-2 py-1 w-full">
+        {{range .Agents}}<option value="{{.}}" {{if eq . $.PrefillAgent}}selected{{end}}>{{.}}</option>{{end}}
+      </select></label>
+    <label class="text-sm">Thư mục dự án<br>
+      <select name="cwd" class="border rounded px-2 py-1 w-full">
+        {{range .Dirs}}<option value="{{.}}" {{if eq . $.PrefillCwd}}selected{{end}}>{{.}}</option>{{end}}
+      </select>
+      <span class="text-xs text-gray-400">trong {{.ProjectsDir}}</span>
+    </label>
+  </div>
+  <label class="text-sm">Việc cần làm (prompt)<br>
+    <textarea name="prompt" rows="6" required
+      class="border rounded p-2 w-full font-mono text-sm"
+      placeholder="Ví dụ: sửa lỗi null pointer ở internal/api/users.go và thêm test">{{.PrefillPrompt}}</textarea>
+  </label>
+  <div class="flex items-center gap-3 mt-3">
+    <button class="bg-blue-700 text-white px-5 py-2 rounded">Phóng</button>
+    <div id="launch-error" class="flex-1"></div>
+  </div>
+</form>
+{{end}}
+{{end}}

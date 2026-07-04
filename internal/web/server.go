@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/phuc-nt/dandori/internal/config"
+	"github.com/phuc-nt/dandori/internal/runner"
 	"github.com/phuc-nt/dandori/internal/store"
 )
 
@@ -24,6 +25,9 @@ type Server struct {
 	// ReportSink publishes the fleet report to Confluence when wired.
 	// Returns page id, "dry-run", or "" (deduped today).
 	ReportSink func() (string, error)
+	// Launcher runs agent-runs launched from the console (v6). Set by serve
+	// after construction; nil when launch isn't wired (tests).
+	Launcher *runner.Launcher
 
 	mux  *chi.Mux
 	tmpl *renderer
@@ -94,10 +98,19 @@ func (s *Server) routes() {
 	s.mux.Post("/agents/{agent}/band", s.handleSetBand)
 	s.mux.Get("/agents/{agent}/review", s.handleAgentAIReview)
 
+	s.mux.Get("/launch", s.handleLaunchForm)
+	s.mux.Post("/launch", s.handleLaunch)
+	s.mux.Get("/runs/{id}/retry", s.handleRetryForm)
+	s.mux.Post("/runs/{id}/retry", s.handleRetry)
+
 	s.mux.Get("/runs", s.handleRuns)
+	s.mux.Post("/runs/bulk-kill", s.handleBulkKill)
+	s.mux.Post("/runs/bulk-budget", s.handleBulkBudget)
 	s.mux.Get("/runs/compare", s.handleRunCompare)
 	s.mux.Get("/spikes", s.handleSpikes)
 	s.mux.Get("/runs/{id}", s.handleRunDetail)
+	s.mux.Get("/runs/{id}/status-fragment", s.handleRunStatusFragment)
+	s.mux.Get("/runs/{id}/log-tail", s.handleRunLogTail)
 	s.mux.Post("/runs/{id}/kill", s.handleRunKill)
 	s.mux.Post("/runs/{id}/task-key", s.handleRunTaskKey)
 	s.mux.Post("/runs/{id}/flag", s.handleRunFlag)

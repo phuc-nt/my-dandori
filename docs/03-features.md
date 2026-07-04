@@ -111,12 +111,12 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 
 | # | Feature | User *làm gì* | Trụ | Service | Ưu tiên |
 |---|---|---|---|---|---|
-| UA1 | **Launch run từ browser** | chọn agent + task Jira + context layer → chạy | GOVERN·CAPTURE | Jira, runtime | **[Sau]** |
+| UA1 | **Launch run từ browser** | chọn agent + task Jira + context layer → chạy | GOVERN·CAPTURE | Jira, runtime | **v6 ✅ (claude)** |
 | UA2 | **Kill switch theo dòng** | nút đỏ trên mọi run đang chạy → dừng + ghi lý do | GOVERN | runtime | **[MVP]** |
 | UA3 | **Set budget inline** | sửa trần $/token của run/agent/project ngay tại ô | GOVERN | runtime | **[MVP]** |
 | UA4 | **Promote/demote autonomy band** | dropdown chuyển agent giữa band (supervised → auto-merge) | LEARN·GOVERN | runtime, GitHub | **[Sau]** |
-| UA5 | **Retry / retry-with-fixes** | chạy lại với cùng context, hoặc sửa prompt trước khi chạy | CAPTURE | runtime | **[Sau]** |
-| UA6 | **Bulk action** | chọn N run → pause/kill/set-budget cùng lúc | GOVERN | runtime | **[Sau]** |
+| UA5 | **Retry / retry-with-fixes** | chạy lại với cùng context, hoặc sửa prompt trước khi chạy | CAPTURE | runtime | **v6 ✅** |
+| UA6 | **Bulk action** | chọn N run → pause/kill/set-budget cùng lúc | GOVERN | runtime | **v6 ✅ (kill/budget)** |
 
 ### U-B · Đóng vòng governance (review queue) — *nhóm giá trị nhất*
 

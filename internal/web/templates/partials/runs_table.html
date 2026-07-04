@@ -2,6 +2,7 @@
 <tbody id="runs-tbody">
   {{range .Runs}}
   <tr class="border-b hover:bg-gray-100">
+    <td class="p-2"><input type="checkbox" name="run_ids" value="{{.ID}}"></td>
     <td class="p-2"><a class="text-blue-600 hover:underline font-mono" href="/runs/{{.ID}}">{{short .ID}}</a></td>
     <td class="p-2"><a class="hover:underline" href="/dash/agent/{{.AgentID}}">{{.AgentID}}</a></td>
     <td class="p-2"><a class="hover:underline" href="/dash/project/{{.Project}}">{{.Project}}</a></td>
@@ -12,7 +13,7 @@
     <td class="p-2 text-xs">{{.Source}}</td>
   </tr>
   {{else}}
-  <tr><td colspan="8" class="p-6 text-center text-gray-400">No runs yet — run <code>dandori init</code> in a project, then use Claude Code as usual.</td></tr>
+  <tr><td colspan="9" class="p-6 text-center text-gray-400">No runs yet — run <code>dandori init</code> in a project, then use Claude Code as usual.</td></tr>
   {{end}}
 </tbody>
 {{end}}

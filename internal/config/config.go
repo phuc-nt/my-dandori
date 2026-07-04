@@ -59,28 +59,35 @@ type Config struct {
 	GateChecks           []string           `yaml:"gate_checks"`
 	Pricing              map[string]Pricing `yaml:"pricing"`
 	Integrations         Integrations       `yaml:"integrations"`
+	// Console launch (v6). AgentBinaries maps an agent name to the ABSOLUTE
+	// path of its binary — the ONLY binaries the console may launch (never
+	// $PATH-resolved). v6 enables `claude` only; others are rejected by the
+	// launcher's argv spec even if listed here.
+	AgentBinaries         map[string]string `yaml:"agent_binaries"`
+	MaxConcurrentLaunches int               `yaml:"max_concurrent_launches"`
 }
 
 func defaults() *Config {
 	home, _ := os.UserHomeDir()
 	return &Config{
-		DBPath:               filepath.Join(home, ".dandori", "dandori.db"),
-		Listen:               "127.0.0.1:4777",
-		UserName:             currentUser(),
-		DryRun:               true,
-		Budget:               Budget{GlobalMonthlyUSD: 50, WarnPcts: []int{50, 75, 90}},
-		GateWaitSeconds:      30,
-		ApprovalTTLMinutes:   60,
-		WatchIntervalSeconds: 60,
-		ProjectsDir:          filepath.Join(home, ".claude", "projects"),
-		LearnWindowDays:      30,
-		CalibrateWithHumans:  true,
-		IngestListen:         "0.0.0.0:4778",
-		ChatMaxTurns:         6,
-		ChatDailyTokenBudget: 200_000,
-		GateChecks:           []string{"go vet ./...", "go test ./..."},
-		Pricing:              defaultPricing(),
-		Integrations:         Integrations{JiraProject: "SCRUM", SlackChannel: ""},
+		DBPath:                filepath.Join(home, ".dandori", "dandori.db"),
+		Listen:                "127.0.0.1:4777",
+		UserName:              currentUser(),
+		DryRun:                true,
+		Budget:                Budget{GlobalMonthlyUSD: 50, WarnPcts: []int{50, 75, 90}},
+		GateWaitSeconds:       30,
+		ApprovalTTLMinutes:    60,
+		WatchIntervalSeconds:  60,
+		ProjectsDir:           filepath.Join(home, ".claude", "projects"),
+		LearnWindowDays:       30,
+		CalibrateWithHumans:   true,
+		IngestListen:          "0.0.0.0:4778",
+		ChatMaxTurns:          6,
+		ChatDailyTokenBudget:  200_000,
+		GateChecks:            []string{"go vet ./...", "go test ./..."},
+		Pricing:               defaultPricing(),
+		Integrations:          Integrations{JiraProject: "SCRUM", SlackChannel: ""},
+		MaxConcurrentLaunches: 4,
 	}
 }
 

@@ -10,10 +10,37 @@
       · source {{.Run.Source}}
       · <span class="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-xs">{{.Run.Runtime}}</span>
       {{if or .Run.LinesAdded .Run.LinesDeleted}}· <span class="text-green-600">+{{.Run.LinesAdded}}</span>/<span class="text-red-600">−{{.Run.LinesDeleted}}</span> lines{{end}}
+      {{if .RetryOf}}· chạy lại từ <a class="text-blue-600 font-mono" href="/runs/{{.RetryOf}}">{{short .RetryOf}}</a>{{end}}
+      {{if .RetriedBy}}· đã được chạy lại ở <a class="text-blue-600 font-mono" href="/runs/{{.RetriedBy}}">{{short .RetriedBy}}</a>{{end}}
     </div>
   </div>
-  {{template "run_row_actions" .Run}}
+  <div class="flex items-center gap-2">
+    {{if .CanRetry}}<a href="/runs/{{.Run.ID}}/retry" class="bg-slate-700 text-white text-sm px-3 py-1.5 rounded">↻ Chạy lại (sửa prompt)</a>{{end}}
+    {{template "run_row_actions" .Run}}
+  </div>
 </div>
+
+{{if .IsConsoleRun}}
+<!-- Live console pane: status badge + Kill + streamed stdout (v6) -->
+<div class="bg-white border rounded-lg p-4 mb-6">
+  <div class="flex items-center justify-between mb-2">
+    <div class="font-semibold text-sm">Phiên chạy từ console</div>
+    <div id="status-fragment"
+         hx-get="/runs/{{.Run.ID}}/status-fragment"
+         hx-trigger="load, every 2s"
+         hx-swap="outerHTML">…</div>
+  </div>
+  <div id="log-container"
+       class="bg-slate-900 text-slate-100 font-mono text-xs rounded p-3 h-72 overflow-y-auto whitespace-pre-wrap"
+       hx-on:htmx:after-swap="this.scrollTop = this.scrollHeight"></div>
+  <!-- The poller re-renders itself each cycle with a bumped ?since cursor -->
+  <div id="log-poller"
+       hx-get="/runs/{{.Run.ID}}/log-tail?since=0"
+       hx-trigger="load, every 2s"
+       hx-target="#log-container"
+       hx-swap="beforeend"></div>
+</div>
+{{end}}
 
 <div class="grid md:grid-cols-4 gap-4 mb-6">
   <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Cost</div>
@@ -48,4 +75,26 @@
   <div class="p-6 text-center text-gray-400">No events captured for this run.</div>
   {{end}}
 </div>
+{{end}}
+
+{{define "run_status_fragment"}}
+<div id="status-fragment"
+     {{if not .Terminal}}hx-get="/runs/{{.ID}}/status-fragment" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}
+     class="flex items-center gap-2">
+  <span class="{{statusColor .Status}} font-semibold text-sm">{{.Status}}</span>
+  {{if .Adopted}}<span class="text-xs text-amber-600">(nhận nuôi sau restart — không có log trực tiếp, nhưng vẫn dừng được)</span>{{end}}
+  {{if .Killable}}
+  <form hx-post="/runs/{{.ID}}/kill" hx-target="#status-fragment" hx-swap="outerHTML"
+        onsubmit="return confirm('Dừng phiên này?')">
+    <button class="bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1 rounded">Dừng</button>
+  </form>
+  {{end}}
+</div>
+{{end}}
+
+{{define "run_log_pane"}}
+{{range .Lines}}<div>{{.Payload}}</div>{{end}}
+<!-- re-render the poller with the bumped cursor (out-of-band) -->
+<div id="log-poller" hx-swap-oob="true"
+     {{if not .Terminal}}hx-get="/runs/{{.ID}}/log-tail?since={{.MaxID}}" hx-trigger="every 2s" hx-target="#log-container" hx-swap="beforeend"{{end}}></div>
 {{end}}

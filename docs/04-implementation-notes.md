@@ -126,9 +126,27 @@ Khép mảng vision còn trắng: **C5** (context phân tầng), **C6** (version
 - **UI hai mode:** editor + history/diff/rollback + preview trong khu **Kỹ thuật** (📚 Context dưới nhóm Learn); exec_home có card đọc-chỉ "Tri thức công ty: N chính sách · cập nhật gần nhất".
 - **E2E hành vi thật (proof quyết định):** seed nonce vào company context → chạy phiên `claude -p` thật → hỏi "mã kiểm chứng?" → model trả **đúng nonce**. Chứng minh model NHẬN và DÙNG context tiêm vào (không chỉ emit JSON). `scripts/e2e_context_inject.sh` 6/6.
 
+## v6 (260704, plan `260704-0614`) — Commander
+
+Biến Dandori từ "quan sát/gác" thành "chỉ huy": phóng và điều khiển agent-run trực tiếp từ console (UA1/UA5/UA6). Đây là milestone **RCE-surface** nhất (web server spawn process) — qua red-team 3 CRITICAL + 5 HIGH vá **trước khi** code, E2E chứng minh flag-injection vô hại + kill giết process thật.
+
+- **Phóng bất đồng bộ (UA1):** package `internal/runner` — `Launch(agent,prompt,cwd,by,retryOf)` tạo run `source='console'`, `exec.Command` arg-slice (KHÔNG shell), `Setpgid` cho nhóm process riêng, `cmd.Start()` + goroutine reap; web handler trả ngay, HX-Redirect sang trang chi tiết live. Chia sẻ core capture với `dandori wrap` qua `internal/capture/runcore.go` (StartRun/FinalizeRun — DRY).
+- **Chống RCE (điểm sống còn):**
+  - **Không shell.** Prompt người nhập là **giá trị của `-p`** (`argvFor` → `[bin,"-p",prompt]`), không bao giờ đứng vị trí flag → prompt `--dangerously-bypass-approvals-and-sandbox` chạy như text (E2E assert).
+  - **Chỉ launch claude** (đi qua hooks → guardrail + Context Hub injection; governed). Codex/khác = [Sau] vì wrap không gác được tool-call.
+  - **Binary allowlist** đường tuyệt đối (`agent_binaries` trong config, `os.Stat`+`IsRegular`, không bao giờ `$PATH`). **cwd allowlist** trong `projects_dir` (`filepath.Rel` boundary — chặn cả `../` lẫn sibling `/proj-evil`).
+  - Launch/kill/retry/bulk **POST sau originGuard**, chỉ console localhost, KHÔNG lên listener ingest. Kill-switch đọc **live** trước spawn. Mọi hành động audit.
+- **Lifecycle (UA lifecycle):** kill thật = `syscall.Kill(-pgid, SIGTERM→5s→SIGKILL)` **trong cùng lock** với reaper (không hit PID tái dùng — C3) + `govern.KillRun` (status+audit). `killed` là terminal truth (reaper không hạ xuống `failed`). Semaphore giới hạn concurrent, release mọi nhánh (kể cả panic). Reap: drain pipe (`wg.Wait`) **rồi** `cmd.Wait` (chống deadlock StdoutPipe). Startup **reconcile**: run `console` PID chết → `failed`; PID sống → **nhận nuôi** (re-register pgid) để vẫn kill được; hook/wrap run không bị đụng.
+- **Live UI (P3):** trang chi tiết run console poll HTMX `every 2s` — badge trạng thái + nút Dừng có điều kiện, log stream tăng dần theo `events.id` cursor, dừng poll bằng **HTTP 286** khi run kết thúc. Output agent HTML-escape (XSS). Orphan nhận-nuôi hiện "không có log trực tiếp nhưng vẫn dừng được".
+- **Retry-with-fixes (UA5):** từ run console đã xong → form điền sẵn prompt (sửa được) → phóng run mới, `retry_of` **lấy từ URL path** (không phải form field — chống giả mạo lineage M5); hai chiều link trên trang chi tiết.
+- **Bulk (UA6):** checkbox + select-all trên trang Runs → bulk-kill / bulk-set-budget, mỗi item qua đúng đường audit đơn lẻ. Tally **trung thực**: "N đã dừng process · M chỉ đánh dấu · K lỗi" — không bao giờ nói dối "all killed" (M4).
+- **Migration 012:** `pid, launched_by, exit_code, retry_of` (additive). Dep mới: `golang.org/x/sync/semaphore`. Nav: 🚀 Phóng run (nhóm Capture, khu Kỹ thuật).
+- **E2E hành vi thật:** `scripts/e2e_commander.sh` 8/8 — fake claude echo argv chứng minh prompt-nguy-hiểm thành `-p` value; launch→done sạch; kill process thật chết (`kill -0` fail), status=killed, audited; cross-compile linux no-CGO.
+
 ## Giới hạn đã biết / [Sau]
 
 - Tailwind + HTMX + Chart.js qua CDN — cần mạng lần đầu; có CSS fallback tối giản.
+- **v6 [Sau]:** launch codex/runtime khác từ console (cần wrap-interception governed trước); remote-machine launch (chỉ localhost máy chạy serve); Windows Job Objects; `EvalSymlinks` hardening cho cwd; SIGTERM giữa run → child detach + reconcile khi restart (không kill child lúc shutdown); RBAC/tác giả per-principal (single-principal `@console`); scheduling/cron, multi-step orchestration.
 - **v5 [Sau]:** rollout xấu vẫn tồn tại trong phiên ĐANG chạy đến hết phiên (SessionStart-only, không có đường flush/kill context giữa phiên); RBAC/tác giả per-principal; resolve multi-team hiện lấy team_id nhỏ nhất; re-inject mỗi lần resume; `/ingest/context` đọc được bởi bất kỳ token holder (single shared token, như `/ingest/policy`); import Drive/Confluence, lịch rollout: chưa làm.
 - **v4 [Sau]:** RBAC/đa-token per-operator (hiện single shared ingest token + single-principal approval); `rule_candidate_from_repeated_blocks` (observer tự đề xuất regex — cần operator review kỹ); ingest bind ra network thật cần firewall (giả định mạng nội bộ tin cậy); token-level streaming cho chat.
 - Trend Δ7d là xấp xỉ (window 7d vs 14d), chưa windowing chính xác.

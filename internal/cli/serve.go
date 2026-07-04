@@ -2,10 +2,16 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
+	"github.com/phuc-nt/dandori/internal/capture"
 	"github.com/phuc-nt/dandori/internal/ingest"
+	"github.com/phuc-nt/dandori/internal/runner"
+	"github.com/phuc-nt/dandori/internal/store"
 	"github.com/phuc-nt/dandori/internal/web"
 )
 
@@ -25,6 +31,14 @@ var serveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		// Console launcher (v6): shared registry + concurrency cap. Reconcile
+		// resolves runs left mid-flight by a previous serve (dead → failed,
+		// live → adopted so they stay killable).
+		ing := &capture.Ingestor{Cfg: cfg, St: st}
+		lau := runner.New(cfg, st, ing)
+		runner.Reconcile(lau.Reg, st)
+		srv.Launcher = lau
+		installConsoleShutdown(st)
 		wireIntegrations(cfg, st, srv)
 		startWorkers(cmd.Context(), cfg, st)
 		// The ingest listener is a SEPARATE server: routable bind, token
@@ -42,6 +56,21 @@ var serveCmd = &cobra.Command{
 		fmt.Printf("dandori console → http://%s\n", cfg.Listen)
 		return srv.ListenAndServe()
 	},
+}
+
+// installConsoleShutdown marks running console-launched runs 'orphaned' on
+// SIGTERM/Interrupt so they are reconciled (not left 'running') next startup.
+// Children keep running in their own process group — they are NOT killed on
+// serve shutdown (a restart re-adopts the live ones). Hook/wrap runs (no pid)
+// are untouched.
+func installConsoleShutdown(st *store.Store) {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-ch
+		st.DB.Exec(`UPDATE runs SET status = 'orphaned' WHERE source = 'console' AND status = 'running'`)
+		os.Exit(0)
+	}()
 }
 
 var flagTemplatesDir string

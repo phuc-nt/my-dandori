@@ -93,12 +93,93 @@ func (s *Server) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 	flags, _ := s.queryFlags("open")
 	data := map[string]any{
 		"Page": "runs", "Run": runs[0], "Events": events, "Flags": flags,
+		"IsConsoleRun": runs[0].Source == "console",
 	}
+	// Lineage (v6 retry): the run this was retried from, and any run that
+	// retried this one — fetched here to avoid widening the paged query.
+	var retryOf, retriedBy string
+	s.Store.Read().QueryRow(`SELECT COALESCE(retry_of,'') FROM runs WHERE id = ?`, id).Scan(&retryOf)
+	s.Store.Read().QueryRow(`SELECT id FROM runs WHERE retry_of = ? ORDER BY started_at DESC LIMIT 1`, id).Scan(&retriedBy)
+	data["RetryOf"] = retryOf
+	data["RetriedBy"] = retriedBy
+	data["CanRetry"] = runs[0].Source == "console" && runTerminal(runs[0].Status)
 	if runs[0].Status == "failed" || runs[0].Status == "killed" {
 		trace := learn.Trace(toTraceEvents(events))
 		data["Trace"] = trace
 	}
 	s.render(w, r, "run_detail", data)
+}
+
+// runTerminal reports whether a run status will not change further.
+func runTerminal(status string) bool {
+	return status == "done" || status == "failed" || status == "killed"
+}
+
+// handleRunStatusFragment polls the live status badge + Kill button for a
+// console run. Returns HTTP 286 (htmx stop-polling) once the run is terminal.
+func (s *Server) handleRunStatusFragment(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var status string
+	if err := s.Store.Read().QueryRow(`SELECT status FROM runs WHERE id = ?`, id).Scan(&status); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	// An adopted live orphan is killable (registry entry) even though status
+	// is 'orphaned' — keep polling + show Kill for it.
+	adopted := status == "orphaned" && s.launcherHas(id)
+	killable := status == "running" || adopted
+	if runTerminal(status) {
+		w.WriteHeader(286) // stop polling
+	}
+	s.renderFragment(w, "run_detail", "run_status_fragment", map[string]any{
+		"ID": id, "Status": status, "Killable": killable, "Adopted": adopted, "Terminal": runTerminal(status),
+	})
+}
+
+// handleRunLogTail streams new run_stdout lines since a cursor. 286 on
+// terminal so the poller stops.
+func (s *Server) handleRunLogTail(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+	rows, err := s.Store.Read().Query(`SELECT id, payload FROM events
+		WHERE run_id = ? AND kind = 'run_stdout' AND id > ? ORDER BY id`, id, since)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	type line struct {
+		ID      int64
+		Payload string
+	}
+	var lines []line
+	maxID := since
+	for rows.Next() {
+		var l line
+		if rows.Scan(&l.ID, &l.Payload) == nil {
+			lines = append(lines, l)
+			maxID = l.ID
+		}
+	}
+	rows.Close()
+
+	var status string
+	s.Store.Read().QueryRow(`SELECT status FROM runs WHERE id = ?`, id).Scan(&status)
+	if runTerminal(status) {
+		w.WriteHeader(286)
+	}
+	s.renderFragment(w, "run_detail", "run_log_pane", map[string]any{
+		"ID": id, "Lines": lines, "MaxID": maxID, "Terminal": runTerminal(status),
+	})
+}
+
+// launcherHas reports whether the launcher registry still tracks a run
+// (live or adopted orphan) — nil-safe for tests without a launcher.
+func (s *Server) launcherHas(runID string) bool {
+	if s.Launcher == nil {
+		return false
+	}
+	_, ok := s.Launcher.Reg.Get(runID)
+	return ok
 }
 
 func toTraceEvents(events []EventRow) []learn.TraceEvent {
@@ -109,15 +190,31 @@ func toTraceEvents(events []EventRow) []learn.TraceEvent {
 	return out
 }
 
-// handleRunKill kills one running session (UA2).
+// handleRunKill kills one running session (UA2). For a console-launched run
+// this signals the real process group via the launcher; hook/wrap runs fall
+// back to a status-only mark (blocks the next tool call). Single actor
+// identity: cfg.UserName+"@console".
 func (s *Server) handleRunKill(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	reason := r.FormValue("reason")
 	if reason == "" {
 		reason = "killed from console"
 	}
-	if err := govern.KillRun(s.Store, id, s.Cfg.UserName, reason); err != nil {
+	actor := s.Cfg.UserName + "@console"
+	var err error
+	if s.Launcher != nil {
+		_, err = s.Launcher.Kill(id, actor, reason)
+	} else {
+		err = govern.KillRun(s.Store, id, actor, reason)
+	}
+	if err != nil {
 		http.Error(w, err.Error(), 500)
+		return
+	}
+	// HTMX kill (live console pane) → return the refreshed status fragment so
+	// the button vanishes; classic form POST → redirect back.
+	if isHTMX(r) {
+		s.handleRunStatusFragment(w, r)
 		return
 	}
 	redirectBack(w, r, "/runs/"+id)
