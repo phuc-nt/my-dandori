@@ -46,7 +46,7 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 | # | Feature | Use-case | Nhu cầu thật | Ưu tiên |
 |---|---|---|---|---|
 | C1 | **Auto-capture mỗi run** — layer mỏng ghi ai · task · token/cost · code đổi · tool pass/fail · context dùng | "Không ai phải nhập tay; mở Claude Code chạy là có bản ghi" | mọi phân tích cần data không-ma-sát | **[MVP]** |
-| C2 | **Multi-runtime adapter** — Claude Code trước, rồi Cursor/Codex/Copilot | "Đội dùng 3 tool khác nhau, vẫn về một schema" | tránh khoá cứng một vendor | **[MVP]** Claude · **[Sau]** còn lại |
+| C2 | **Multi-runtime adapter** — Claude Code trước, rồi Cursor/Codex/Copilot | "Đội dùng 3 tool khác nhau, vẫn về một schema" | tránh khoá cứng một vendor | **v2 ✅** Claude+Codex · **[Sau]** Cursor/Copilot |
 | C3 | **Cost attribution** — gắn metadata agent · project · team · task vào từng run | "Hoá đơn tháng này chia theo project ra sao — đội nào đốt?" | chi phí AI khó dự báo, chưa ai chia được | **[MVP]** |
 | C4 | **Unified schema human + agent** — kéo Jira/GitHub (việc người) và agent runs vào *cùng bảng* | "So người vs agent trên cùng thước đo" | điều kiện để LEARN so sánh công bằng | **[MVP]** |
 | C5 | **Multi-layer Context Hub** — Company → Project → Team → Agent → Task, có chủ sở hữu | "CLAUDE.md của senior thành policy tổ chức, ở lại khi họ nghỉ" | tri thức bay mất khi người đi | **v5 ✅ (Company→Team→Agent)** |
@@ -67,7 +67,7 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 | G2 | **Scope / sandbox** — agent chỉ động vào working dir được cấp | "Không với tới root OS hay repo khác" | isolation là rào #1 để lên prod | **[MVP]** |
 | G3 | **Budget circuit-breaker** — trần token/đô theo agent · project; cảnh báo 50/75/90% → hard stop | "Vượt hạn mức → dừng, không đợi cuối tháng giật mình" | spend dễ scale, khó forecast | **[MVP]** |
 | G4 | **Permission gate realtime** — hành động rủi ro cao (deploy prod, breaking DB) → dừng, đòi human duyệt *ngay lúc đó* | "Không duyệt sau — chặn đúng thời điểm" | interruption point là control lõi | **[MVP]** |
-| G5 | **Kill switch** — global hard-stop thu hồi mọi tool-permission; soft pause theo session | "Agent kẹt loop / chạy dại → cắt ngay" | kill switch = primitive bắt buộc | **[Sau]** |
+| G5 | **Kill switch** — global hard-stop thu hồi mọi tool-permission; soft pause theo session | "Agent kẹt loop / chạy dại → cắt ngay" | kill switch = primitive bắt buộc | **MVP ✅** |
 | G6 | **Post-action check** — sau mỗi action: lint/typecheck/schema-validate, trả feedback để agent tự sửa | "Sai kiểu là biết ngay, không đợi review" | bắt lỗi sớm trong execution | **[Sau]** |
 
 ### Nhịp 2 — Closed loop & gate (hậu kiểm theo chu kỳ)
@@ -75,8 +75,8 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 | # | Feature | Use-case | Nhu cầu thật | Ưu tiên |
 |---|---|---|---|---|
 | G7 | **Quality gate độc lập** — pipeline ngoài agent chấm & chặn run dưới ngưỡng (coverage, lint, security scan); separation of duties | "Người viết code không phải người duy nhất chấm code đó" | governance là bottleneck mới | **[MVP]** |
-| G8 | **Closed loop tự động** — grade thấp → flag → mở review task (Jira) → gán reviewer → ghi quyết định | "Thấy agent tệ rồi *tự* làm gì đó, không thủ công" | control phải khép vòng, không dừng ở 'thấy' | **[Sau]** |
-| G9 | **Approval workflow** — task có lifecycle (TODO → IN REVIEW → DONE), mỗi lần duyệt ghi ai·khi nào·vì sao | "Mọi quyết định thành bản ghi bất biến" | auditor đòi bằng chứng control chạy đều | **[Sau]** |
+| G8 | **Closed loop tự động** — grade thấp → flag → mở review task (Jira) → gán reviewer → ghi quyết định | "Thấy agent tệ rồi *tự* làm gì đó, không thủ công" | control phải khép vòng, không dừng ở 'thấy' | **v3 ✅** |
+| G9 | **Approval workflow** — task có lifecycle (TODO → IN REVIEW → DONE), mỗi lần duyệt ghi ai·khi nào·vì sao | "Mọi quyết định thành bản ghi bất biến" | auditor đòi bằng chứng control chạy đều | **MVP ✅** |
 
 ### Use-case xuyên suốt GOVERN
 
@@ -95,9 +95,9 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 | L3 | **Provenance** — mỗi số lần ngược về raw data; cùng input → cùng output, không ngưỡng ẩn | "Số này ở đâu ra? — dám quyết dựa trên nó" | evidence phải decision-grade | **[MVP]** |
 | L4 | **Calibration theo fleet** — chuẩn theo phân vị trên chính tổ chức bạn (gồm việc người) | "Phân vị 85 — hơn 85% lượt làm, kể cả của người. Không magic number" | ngưỡng gõ tay = cảm tính | **[MVP]** |
 | L5 | **Cross-fleet leaderboard** — xếp hạng, phân bố grade, đội lên/xuống | "Team A hay team B dùng AI tốt hơn — bằng chứng, không cảm giác" | so sánh cần cùng một bảng | **[MVP]** |
-| L6 | **Trend / trust index** — xu hướng theo tuần, điểm tổng hợp 0–100 + autonomy band | "Agent đang lên hay tụt — có nên giao task khó hơn?" | cần tín hiệu để phân việc | **[Sau]** |
+| L6 | **Trend / trust index** — xu hướng theo tuần, điểm tổng hợp 0–100 + autonomy band | "Agent đang lên hay tụt — có nên giao task khó hơn?" | cần tín hiệu để phân việc | **v3 ✅** |
 | L7 | **Agent assignment** — gợi ý agent cho task theo capability/history/load, PO confirm | "Task này giao agent nào hợp nhất?" | phân việc còn thủ công | **[Sau]** |
-| L8 | **Knowledge capture** — đóng gói pattern/prompt/context tốt thành tri thức tái dùng | "Senior nghỉ, tri thức ở lại" | tri thức đi theo người nghỉ | **[Sau]** |
+| L8 | **Knowledge capture** — đóng gói pattern/prompt/context tốt thành tri thức tái dùng | "Senior nghỉ, tri thức ở lại" | tri thức đi theo người nghỉ | **v3 ✅** |
 
 ---
 
@@ -114,7 +114,7 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 | UA1 | **Launch run từ browser** | chọn agent + task Jira + context layer → chạy | GOVERN·CAPTURE | Jira, runtime | **v6 ✅ (claude)** |
 | UA2 | **Kill switch theo dòng** | nút đỏ trên mọi run đang chạy → dừng + ghi lý do | GOVERN | runtime | **[MVP]** |
 | UA3 | **Set budget inline** | sửa trần $/token của run/agent/project ngay tại ô | GOVERN | runtime | **[MVP]** |
-| UA4 | **Promote/demote autonomy band** | dropdown chuyển agent giữa band (supervised → auto-merge) | LEARN·GOVERN | runtime, GitHub | **[Sau]** |
+| UA4 | **Promote/demote autonomy band** | dropdown chuyển agent giữa band (supervised → auto-merge) | LEARN·GOVERN | runtime, GitHub | **v3 ✅** |
 | UA5 | **Retry / retry-with-fixes** | chạy lại với cùng context, hoặc sửa prompt trước khi chạy | CAPTURE | runtime | **v6 ✅** |
 | UA6 | **Bulk action** | chọn N run → pause/kill/set-budget cùng lúc | GOVERN | runtime | **v6 ✅ (kill/budget)** |
 
@@ -126,7 +126,7 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 | UB2 | **Approve/Reject + lý do** | one-click duyệt/từ chối; free-text "vì sao" rơi thẳng vào audit bất biến | GOVERN | runtime | **[MVP]** |
 | UB3 | **Permission-gate modal** | agent chạm lệnh gated → modal hỏi người: allow once / allow always / deny | GOVERN | runtime | **[MVP]** |
 | UB4 | **Quality-gate override** | gate fail → người override kèm justification (ghi lại) | GOVERN | GitHub | **[Sau]** |
-| UB5 | **Escalation routing** | flag chưa xử lý quá SLA → tự đẩy lên eng lead | GOVERN | — | **[Sau]** |
+| UB5 | **Escalation routing** | flag chưa xử lý quá SLA → tự đẩy lên eng lead | GOVERN | — | **v3 ✅** |
 
 ### U-C · Hành động xuyên service (Dandori là hub, không phải silo)
 
@@ -134,9 +134,9 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 |---|---|---|---|---|---|
 | UC1 | **Flag → Jira ticket** | biến run lỗi/flag thành bug Jira, pre-fill link run + log | GOVERN·CAPTURE | Jira | **[MVP]** |
 | UC2 | **Transition Jira inline** | đổi trạng thái ticket (In Progress → Done) ngay từ dòng run | CAPTURE | Jira | **[Sau]** |
-| UC3 | **Post Confluence report** | một click đăng summary run/sprint lên Confluence | LEARN | Confluence | **[Sau]** |
+| UC3 | **Post Confluence report** | một click đăng summary run/sprint lên Confluence | LEARN | Confluence | **v2 ✅** |
 | UC4 | **PR comment/approve** | comment hoặc approve PR agent mở, ngay trong Dandori | GOVERN | GitHub | **[Sau]** |
-| UC5 | **Revert-detector → action** | phát hiện code agent bị revert → gợi ý "mở incident / demote agent" | LEARN·GOVERN | GitHub | **[Sau]** |
+| UC5 | **Revert-detector → action** | phát hiện code agent bị revert → gợi ý "mở incident / demote agent" | LEARN·GOVERN | GitHub | **v2 ✅** |
 | UC6 | **Kéo Drive doc vào context** | search Drive, gắn doc làm context layer một click | CAPTURE | Drive | **[Sau]** |
 | UC7 | **Duyệt trong Slack** | review queue đẩy vào Slack; nút Approve/Reject interactive ngay trong tin nhắn → ghi lý do vào audit bất biến | GOVERN | Slack | **[MVP]** |
 | UC8 | **Sheets export cost/ROI** | đẩy bảng cost·leaderboard·ROI ra Google Sheets cho PO/finance đọc nơi họ vốn ở | LEARN·CAPTURE | GWS Sheets | **[Sau]** |
@@ -160,9 +160,9 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 | # | Feature | User *làm gì* | Trụ | Service | Ưu tiên |
 |---|---|---|---|---|---|
 | UE1 | **Budget policy form** | đặt budget + ngưỡng circuit-breaker theo agent/project/team bằng form | GOVERN | — | **[MVP]** |
-| UE2 | **Guardrail rule builder** | form "chặn lệnh khớp X" / "đòi duyệt nếu Y" — không YAML | GOVERN | runtime | **[Sau]** |
+| UE2 | **Guardrail rule builder** | form "chặn lệnh khớp X" / "đòi duyệt nếu Y" — không YAML | GOVERN | runtime | **v3 ✅** |
 | UE3 | **Quality-gate threshold UI** | slider min-grade, %test-pass, coverage trước khi auto-merge | GOVERN·LEARN | GitHub | **[Sau]** |
-| UE4 | **Policy simulator** | "thử rule này trên 30 ngày run vừa rồi — bao nhiêu lượt bị chặn?" | GOVERN | — | **[Sau]** |
+| UE4 | **Policy simulator** | "thử rule này trên 30 ngày run vừa rồi — bao nhiêu lượt bị chặn?" | GOVERN | — | **v3 ✅** |
 
 > UE4 là **feature xây niềm tin**: không ai dám bật một guardrail mà họ không preview được hậu quả.
 
@@ -172,9 +172,9 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 |---|---|---|---|---|---|
 | UF1 | **Drilldown** | click số tổng → chi tiết → raw run | CAPTURE | — | **[MVP]** |
 | UF2 | **Provenance explorer** | đi ngược mọi con số (grade/$/ROI) về đúng raw event sinh ra nó | LEARN·CAPTURE | all | **[MVP]** |
-| UF3 | **Run comparison** | chọn 2+ run → so cost/token/tool/grade cạnh nhau | LEARN·CAPTURE | — | **[Sau]** |
-| UF4 | **Explain cost spike** | click điểm bất thường trên chart cost → breakdown cái gì đẩy lên | LEARN·CAPTURE | runtime | **[Sau]** |
-| UF5 | **"Why did this fail?" trace** | timeline tool-call, tô đậm bước fail + context tại thời điểm đó | CAPTURE·GOVERN | runtime | **[Sau]** |
+| UF3 | **Run comparison** | chọn 2+ run → so cost/token/tool/grade cạnh nhau | LEARN·CAPTURE | — | **v2 ✅** |
+| UF4 | **Explain cost spike** | click điểm bất thường trên chart cost → breakdown cái gì đẩy lên | LEARN·CAPTURE | runtime | **v2 ✅** |
+| UF5 | **"Why did this fail?" trace** | timeline tool-call, tô đậm bước fail + context tại thời điểm đó | CAPTURE·GOVERN | runtime | **v3 ✅** |
 
 > UF2 là **feature độ tin cậy**: biến "tin cái dashboard" thành "kiểm chứng được cái dashboard".
 
@@ -186,9 +186,9 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 | UG2 | **Alert subscription (đa kênh)** | đăng ký điều kiện (budget >80%, grade tụt, revert) → đẩy ra **Slack** (channel/DM) hoặc **Gmail** | GOVERN·LEARN | Slack, GWS Gmail | **[MVP]** |
 | UG2b | **Digest theo vai** | daily/weekly fleet-health digest gửi Slack (đội) + Gmail (người không ở Slack) | LEARN | Slack, GWS Gmail | **[Sau]** |
 | UG3 | **Saved views** | lưu bảng đã lọc (vd "run fail của team tôi") thành tab đặt tên | CAPTURE | — | **[Sau]** |
-| UG4 | **Run → playbook** | biến run tốt thành template tái dùng (task+context+guardrail) | LEARN | runtime | **[Sau]** |
+| UG4 | **Run → playbook** | biến run tốt thành template tái dùng (task+context+guardrail) | LEARN | runtime | **v3 ✅** |
 | UG5 | **Live fleet wallboard** | chế độ TV: run đang chạy, gauge spend, độ sâu queue | CAPTURE·GOVERN | runtime | **[Sau]** |
-| UG6 | **Compliance export** | bundle JSON/CSV + audit trail, xuất sang SIEM | GOVERN·CAPTURE | — | **[Sau]** |
+| UG6 | **Compliance export** | bundle JSON/CSV + audit trail, xuất sang SIEM | GOVERN·CAPTURE | — | **v2 ✅** |
 
 ### U-H · Nền tảng UI
 
