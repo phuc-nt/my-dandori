@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Outer Harness v2</title>
+<style>
+  :root{
+    /* v2 palette: blueprint / architectural — cố ý khác hẳn terminal-green của v1 */
+    --ink:#0a1524;          /* nền xanh mực đậm */
+    --ink2:#0e1c30;
+    --grid:rgba(120,170,225,.09);
+    --paper:#e8eef6;        /* chữ sáng ngả xanh */
+    --steel:#8fb0d4;        /* xanh thép, text phụ */
+    --steel-dim:#5b7699;    /* metadata */
+    --amber:#f2b13d;        /* accent nóng chính */
+    --amber-soft:#f6c96f;
+    --cyan:#57c9d6;         /* data / số */
+    --line-soft:rgba(143,176,212,.22);
+    --sans:"Helvetica Neue",Arial,"Segoe UI",system-ui,sans-serif;
+    --mono:"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:#060c15;
+    color:var(--paper);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    display:flex;align-items:center;justify-content:center;
+    min-height:100vh;padding:32px;
+  }
+
+  .frame{
+    position:relative;
+    width:1200px;max-width:100%;
+    aspect-ratio:1200/675;
+    background:
+      radial-gradient(130% 100% at 82% 12%, rgba(242,177,61,.10), transparent 52%),
+      linear-gradient(160deg,var(--ink2),var(--ink) 60%,#081019);
+    border:1px solid var(--line-soft);
+    border-radius:4px;
+    overflow:hidden;
+    box-shadow:0 40px 120px -50px rgba(87,201,214,.22),inset 0 0 0 1px rgba(143,176,212,.05);
+    padding:clamp(22px,3.6vw,48px) clamp(24px,4.2vw,56px);
+    display:flex;flex-direction:column;
+    container-type:inline-size;
+  }
+  /* blueprint grid */
+  .frame::before{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background-image:
+      linear-gradient(var(--grid) 1px,transparent 1px),
+      linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:34px 34px;
+    mask-image:radial-gradient(120% 100% at 30% 40%,#000 40%,transparent 92%);
+  }
+  /* corner tick, kiểu bản vẽ kỹ thuật */
+  .frame::after{
+    content:"";position:absolute;top:0;right:0;
+    width:78px;height:78px;pointer-events:none;
+    background:
+      linear-gradient(90deg,transparent 76px,var(--line-soft) 76px),
+      linear-gradient(180deg,transparent 76px,var(--line-soft) 76px);
+  }
+
+  .top{display:flex;align-items:baseline;gap:12px;margin-bottom:clamp(20px,3.2cqw,40px);position:relative;z-index:1}
+  .doc{
+    font-family:var(--mono);color:var(--steel-dim);
+    font-size:clamp(10px,1.2cqw,13px);letter-spacing:.16em;text-transform:uppercase;
+  }
+  .rev{
+    margin-left:auto;display:flex;align-items:center;gap:9px;
+    font-family:var(--mono);font-size:clamp(10px,1.15cqw,12px);letter-spacing:.14em;
+    color:var(--ink);background:var(--amber);
+    padding:4px 11px;border-radius:2px;font-weight:700;
+    box-shadow:0 0 22px -4px rgba(242,177,61,.6);
+  }
+  .rev .old{opacity:.55;text-decoration:line-through;font-weight:400}
+
+  .eyebrow{
+    font-family:var(--mono);color:var(--amber-soft);
+    font-size:clamp(11px,1.35cqw,15px);letter-spacing:.24em;text-transform:uppercase;
+    margin-bottom:clamp(8px,1.2cqw,15px);position:relative;z-index:1;
+  }
+
+  h1{
+    position:relative;z-index:1;
+    font-weight:800;
+    font-size:clamp(42px,9.2cqw,118px);
+    line-height:.92;letter-spacing:-.025em;
+    text-wrap:balance;color:var(--paper);
+  }
+  h1 .w2{color:var(--amber)}
+
+  .sub{
+    position:relative;z-index:1;
+    margin-top:clamp(12px,1.9cqw,22px);
+    max-width:22ch;
+    font-size:clamp(15px,2.15cqw,27px);
+    line-height:1.3;color:var(--steel);font-weight:400;text-wrap:balance;
+  }
+  .sub .hi{color:var(--paper);font-weight:700}
+  .sub .dt{color:var(--cyan);font-weight:700}
+  .sub .loop{color:var(--amber);font-weight:700}
+
+  .rule{
+    height:1px;margin:clamp(18px,2.8cqw,32px) 0 clamp(15px,2.3cqw,26px);
+    background:linear-gradient(90deg,var(--line-soft),transparent);
+    position:relative;z-index:1;
+  }
+
+  /* three modules — như 3 khối trong bản thiết kế */
+  .mods{display:flex;flex-direction:column;gap:clamp(8px,1.25cqw,14px);position:relative;z-index:1}
+  .mod{
+    display:grid;grid-template-columns:auto minmax(0,1fr);
+    align-items:baseline;gap:clamp(12px,1.8cqw,22px);
+    font-size:clamp(11px,1.5cqw,18px);
+  }
+  .mod .tag{
+    font-family:var(--mono);font-weight:700;letter-spacing:.08em;
+    display:flex;align-items:baseline;gap:.7ch;white-space:nowrap;
+  }
+  .mod .idx{color:var(--steel-dim);font-size:.82em}
+  .mod .name{color:var(--paper)}
+  .mod.g .name{color:var(--amber)}
+  .mod .desc{color:var(--steel);letter-spacing:.005em}
+  .mod .desc s{color:var(--steel-dim);text-decoration-color:rgba(91,118,153,.7);margin-right:.5ch}
+
+  .foot{
+    margin-top:auto;padding-top:clamp(16px,2.4cqw,26px);
+    display:flex;align-items:center;gap:14px;position:relative;z-index:1;
+  }
+  .cycle{
+    display:flex;align-items:center;gap:.7ch;
+    font-family:var(--mono);color:var(--steel-dim);
+    font-size:clamp(10px,1.2cqw,14px);letter-spacing:.06em;
+  }
+  .cycle .node{color:var(--cyan)}
+  .cycle .node.pulse{color:var(--amber);animation:pulse 2.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.55}50%{opacity:1}}
+  @media (prefers-reduced-motion:reduce){.frame .cycle .node.pulse{animation:none;opacity:1}}
+  .cycle .arw{color:var(--steel-dim);opacity:.6}
+  .by{margin-left:auto;font-family:var(--mono);color:var(--steel-dim);
+      font-size:clamp(10px,1.2cqw,13px);letter-spacing:.1em}
+  .by b{color:var(--steel);font-weight:400}
+</style>
+</head>
+<body>
+  <div class="frame" role="img"
+       aria-label="Outer Harness phiên bản 2. Process và Data quan trọng hơn Agent, và ba thứ đó chỉ mạnh khi nối thành một vòng khép kín gồm ba module CAPTURE, GOVERN, LEARN.">
+
+    <div class="top">
+      <span class="doc">outer-harness · spec</span>
+      <span class="rev"><span class="old">rev.1</span> REV.2</span>
+    </div>
+
+    <div class="eyebrow">Lý thuyết · bản viết lại</div>
+    <h1>Outer <span class="w2">Harness</span></h1>
+
+    <p class="sub">
+      <span class="hi">Process</span> và <span class="dt">Data</span>
+      quan trọng hơn <span class="hi">Agent</span>. Và ba thứ đó chỉ mạnh
+      khi nối thành <span class="loop">một vòng khép kín</span>.
+    </p>
+
+    <div class="rule"></div>
+
+    <div class="mods">
+      <div class="mod">
+        <span class="tag"><span class="idx">01</span> <span class="name">CAPTURE</span></span>
+        <span class="desc"><s>đếm token</s>trí nhớ có cấu trúc của cả tổ chức</span>
+      </div>
+      <div class="mod g">
+        <span class="tag"><span class="idx">02</span> <span class="name">GOVERN</span></span>
+        <span class="desc"><s>chặn cái sai</s>phân bổ quyền tin cậy, chặn tại tool-call</span>
+      </div>
+      <div class="mod">
+        <span class="tag"><span class="idx">03</span> <span class="name">LEARN</span></span>
+        <span class="desc"><s>tối ưu chi phí</s>biến mỗi run thành tri thức giao việc được</span>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span class="cycle">
+        <span class="node pulse">LEARN</span><span class="arw">→</span><span class="node">GOVERN</span><span class="arw">→</span><span class="node">CAPTURE</span><span class="arw">↺</span>
+        khép kín, hai chiều
+      </span>
+      <span class="by">bởi <b>phuc-nt</b></span>
+    </div>
+  </div>
+</body>
+</html>
