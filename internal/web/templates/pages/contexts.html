@@ -93,7 +93,9 @@
     <ul class="text-sm space-y-2">
       {{range .Docs}}
       <li class="border-b pb-2">
-        <div><span class="text-xs px-1 rounded bg-gray-100">{{.Layer}}</span> {{.TargetID}} · v{{.VersionN}}</div>
+        <div><span class="text-xs px-1 rounded bg-gray-100">{{.Layer}}</span> {{.TargetID}} · v{{.VersionN}}
+          {{if .Note}}<span class="text-xs text-gray-400">— {{.Note}}</span>{{end}}
+        </div>
         <div class="flex gap-2 mt-1">
           <a class="text-blue-600 text-xs" href="/contexts/{{.Layer}}/{{.TargetID}}/history">lịch sử</a>
           {{if eq .Layer "team"}}
@@ -108,6 +110,60 @@
     </ul>
     {{else}}
     <p class="text-gray-400 text-sm">Chưa có doc nào.</p>
+    {{end}}
+  </div>
+</div>
+
+{{/* ---- UC6 Import from Drive — ALL layers approval-gated (C1) ---- */}}
+<div class="bg-white border rounded-lg p-4 mt-4">
+  <div class="font-semibold mb-1">Nhập từ Google Drive</div>
+  <p class="text-xs text-amber-700 mb-3">Nội dung nhập từ Drive là dữ liệu ngoài, không tin cậy, sẽ trở thành chỉ dẫn cho agent — <b>mọi tầng đều phải qua duyệt</b> trước khi áp dụng.</p>
+  <form hx-get="/contexts/drive-search" hx-target="#drive-panel" hx-swap="innerHTML" class="flex gap-2 mb-3">
+    <input name="q" value="{{.DriveQuery}}" class="border rounded px-2 py-1 flex-1 text-sm" placeholder="tên tài liệu Google Docs...">
+    <button class="bg-slate-700 text-white px-4 py-1 rounded text-sm">Tìm</button>
+  </form>
+  <div id="drive-panel">
+    {{if .DriveError}}<div class="text-sm text-red-600">{{.DriveError}}</div>{{end}}
+    {{if .DriveResults}}
+    <ul class="text-sm space-y-1 mb-3">
+      {{range .DriveResults}}
+      <li class="border-b pb-1 flex items-center justify-between">
+        <span>{{.Name}} <span class="text-xs text-gray-400">· sửa {{.ModifiedTime}}</span></span>
+        <a class="text-blue-600 text-xs" hx-get="/contexts/drive-review?id={{.ID}}&name={{.Name}}&modified={{.ModifiedTime}}" hx-target="#drive-panel" hx-swap="innerHTML" href="#">xem trước</a>
+      </li>
+      {{end}}
+    </ul>
+    {{else if .DriveQuery}}
+    <p class="text-gray-400 text-sm">Không tìm thấy tài liệu Google Docs nào.</p>
+    {{end}}
+    {{if .DriveReview}}
+    {{with .DriveReview}}
+    <div class="border rounded p-3 mt-2">
+      <div class="text-sm font-semibold mb-1">{{.DocName}} <span class="text-xs text-gray-400">({{.Runes}} ký tự)</span></div>
+      {{if .TooBig}}
+      <p class="text-sm text-red-600">Tài liệu vượt 8000 ký tự — không thể nhập (giới hạn ngân sách gộp context).</p>
+      {{else if .HasSecret}}
+      <p class="text-sm text-red-600">Tài liệu chứa chuỗi giống secret — nội dung KHÔNG được hiển thị. Gợi ý: {{.SecretHint}}</p>
+      {{else}}
+      <div class="text-xs text-gray-500 mb-1">Toàn bộ nội dung (cuộn để xem hết) — sẽ được gửi duyệt nguyên văn:</div>
+      <pre class="text-xs leading-5 bg-gray-50 border rounded p-3 overflow-y-auto whitespace-pre-wrap" style="max-height:320px">{{.FullText}}</pre>
+      <form hx-post="/contexts/drive-import" hx-target="#ctx-banner" hx-swap="innerHTML" class="grid grid-cols-2 gap-3 mt-3">
+        <input type="hidden" name="doc_id" value="{{.DocID}}">
+        <input type="hidden" name="doc_name" value="{{.DocName}}">
+        <input type="hidden" name="modified" value="{{.ModifiedAt}}">
+        <label class="text-sm">Tầng đích<br>
+          <select name="layer" class="border rounded px-2 py-1 w-full">
+            <option value="company">Công ty</option>
+            <option value="team">Đội</option>
+            <option value="agent">Agent</option>
+          </select></label>
+        <label class="text-sm">Đối tượng (id đội / id agent; bỏ trống cho công ty)<br>
+          <input name="target" list="ctx-targets" class="border rounded px-2 py-1 w-full" placeholder="* / team id / agent id"></label>
+        <button class="bg-purple-700 text-white px-4 py-2 rounded col-span-2">Gửi duyệt nhập</button>
+      </form>
+      {{end}}
+    </div>
+    {{end}}
     {{end}}
   </div>
 </div>

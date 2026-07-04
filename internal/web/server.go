@@ -125,6 +125,9 @@ func (s *Server) routes() {
 	s.mux.Post("/contexts/rollback", s.handleContextRollback)
 	s.mux.Post("/contexts/promote", s.handleContextPromote)
 	s.mux.Get("/contexts/effective", s.handleContextEffective)
+	s.mux.Get("/contexts/drive-search", s.handleDriveSearch)
+	s.mux.Get("/contexts/drive-review", s.handleDriveReview)
+	s.mux.Post("/contexts/drive-import", s.handleDriveImport)
 
 	s.mux.Get("/reviews", s.handleReviews)
 	s.mux.Post("/reviews/{id}/decide", s.handleReviewDecide)
@@ -147,6 +150,11 @@ func (s *Server) routes() {
 	// drive-by <img src> spam the append-only chain past the origin guard.
 	s.mux.Post("/export/compliance", s.handleComplianceExport)
 	s.mux.Post("/reports/confluence", s.handleConfluenceReport)
+
+	s.registerPhase02Routes()
+	s.registerPhase03Routes()
+	s.registerPhase05Routes()
+	s.registerPhase06Routes()
 }
 
 func (s *Server) Handler() http.Handler { return s.mux }

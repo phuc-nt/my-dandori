@@ -21,6 +21,10 @@
         </form>
       </div>
     </div>
+    {{if .ImportContent}}
+    <div class="text-xs text-gray-500 mt-3 mb-1">Toàn bộ nội dung nhập từ Drive ({{.ImportRunes}} ký tự, cuộn để xem hết):</div>
+    <pre class="text-xs leading-5 bg-gray-50 border rounded p-3 overflow-y-auto whitespace-pre-wrap" style="max-height:320px">{{.ImportContent}}</pre>
+    {{end}}
   </div>
   {{else}}
   <div class="p-6 text-center text-gray-400 bg-white border rounded-lg">Queue clear — nothing needs you right now. 🎉</div>

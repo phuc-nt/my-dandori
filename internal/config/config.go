@@ -3,6 +3,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -65,6 +66,24 @@ type Config struct {
 	// launcher's argv spec even if listed here.
 	AgentBinaries         map[string]string `yaml:"agent_binaries"`
 	MaxConcurrentLaunches int               `yaml:"max_concurrent_launches"`
+	// DigestRecipients + ExportSpreadsheetID are the ONLY source of the
+	// UG2b digest / UC8 Sheets-export destinations (C2 — config-pinned,
+	// never request-supplied). Empty ExportSpreadsheetID means "create one
+	// and remember it in settings"; empty DigestRecipients means "no-op".
+	DigestRecipients    []string `yaml:"digest_recipients"`
+	ExportSpreadsheetID string   `yaml:"export_spreadsheet_id"`
+	SheetsExportEnabled bool     `yaml:"sheets_export_enabled"`
+	// PostActionChecks (G6) run automatically after EVERY run finalizes,
+	// against the run's cwd — AFTER the agent has modified it. This is code
+	// execution by design: a check like "go test ./..." or a command with
+	// "go generate" lets an untrusted agent's own committed code (a malicious
+	// _test.go, a //go:generate directive, a crafted build constraint) run as
+	// the Dandori host user, automatically, on every finalize. Trusted ONLY
+	// because these strings come from operator-owned config.yaml — NEVER from
+	// the DB, the web UI, an agent, or task text. DEFAULT EMPTY (opt-in).
+	// Prefer non-executing checks: "go vet ./..." is safe; "go test ./..." or
+	// anything invoking "go generate" is arbitrary code execution.
+	PostActionChecks []string `yaml:"post_action_checks"`
 }
 
 func defaults() *Config {
@@ -116,7 +135,19 @@ func Load(path string) (*Config, error) {
 	cfg.applyEnv()
 	cfg.DBPath = expandHome(cfg.DBPath)
 	cfg.ProjectsDir = expandHome(cfg.ProjectsDir)
+	cfg.validateDigestRecipients()
 	return cfg, nil
+}
+
+// validateDigestRecipients is a best-effort sanity check (not a hard
+// validator) — it logs addresses that don't look like an email so a typo in
+// config.yaml is visible instead of silently swallowed by a failed send.
+func (c *Config) validateDigestRecipients() {
+	for _, addr := range c.DigestRecipients {
+		if i := strings.IndexByte(addr, '@'); i <= 0 || i == len(addr)-1 || strings.ContainsAny(addr, " \t\r\n") {
+			log.Printf("config: digest_recipients entry %q does not look like an email address", addr)
+		}
+	}
 }
 
 func (c *Config) applyEnv() {

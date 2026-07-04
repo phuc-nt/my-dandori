@@ -1,0 +1,41 @@
+#!/bin/sh
+# Fake `gh` CLI for offline unit tests. Echoes canned output keyed on
+# argv[1]/argv[2] and honors FAKE_EXIT to simulate error exit codes.
+# When FAKE_ARGV_OUT is set, appends one line per invocation with args
+# joined by \x1f (unit separator) so tests can split on exact argument
+# boundaries even when a value contains spaces or JSON braces.
+
+if [ -n "$FAKE_ARGV_OUT" ]; then
+  sep=""
+  line=""
+  for arg in "$@"; do
+    line="${line}${sep}${arg}"
+    sep=$(printf '\037')
+  done
+  printf '%s\n' "$line" >> "$FAKE_ARGV_OUT"
+fi
+
+if [ -n "$FAKE_EXIT" ] && [ "$FAKE_EXIT" != "0" ]; then
+  exit "$FAKE_EXIT"
+fi
+
+case "$1 $2" in
+  "pr comment")
+    echo '{"url":"https://github.com/fake/repo/pull/1#issuecomment-1","id":1}'
+    ;;
+  "pr review")
+    echo '{"state":"APPROVED"}'
+    ;;
+  "pr view")
+    # FAKE_PR_HEAD/FAKE_PR_STATE let tests simulate a specific current head
+    # SHA / lifecycle state (e.g. merged, closed, moved head) for H3 re-
+    # validation checks. Defaults match an open PR with a fixed fake SHA.
+    head="${FAKE_PR_HEAD:-fakehead0000000000000000000000000000000}"
+    state="${FAKE_PR_STATE:-OPEN}"
+    printf '{"headRefOid":"%s","state":"%s"}\n' "$head" "$state"
+    ;;
+  *)
+    echo '{}'
+    ;;
+esac
+exit 0

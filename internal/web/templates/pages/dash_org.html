@@ -4,8 +4,11 @@
   <div class="flex gap-2">
     <form method="post" action="/reports/confluence"><button class="bg-blue-700 text-white px-3 py-1 rounded text-sm">Post Confluence report</button></form>
     <form method="post" action="/export/compliance"><button class="bg-slate-700 text-white px-3 py-1 rounded text-sm">Compliance export</button></form>
+    <form hx-post="/dash/export-sheets" hx-target="#delivery-result" hx-swap="innerHTML"><button class="bg-emerald-700 text-white px-3 py-1 rounded text-sm">Export to Sheets</button></form>
+    <form hx-post="/dash/send-digest" hx-target="#delivery-result" hx-swap="innerHTML"><button class="bg-indigo-700 text-white px-3 py-1 rounded text-sm">Gửi digest ngay</button></form>
   </div>
 </div>
+<div id="delivery-result" class="mb-4"></div>
 
 <div class="grid md:grid-cols-4 gap-4 mb-6">
   <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Total runs</div>
@@ -72,5 +75,22 @@
   {{end}}
   </tbody>
 </table>
+</div>
+{{end}}
+
+{{define "delivery_result"}}
+<div class="bg-white border rounded-lg p-3 text-sm">
+  {{if .Err}}
+    <span class="text-red-600">Lỗi: {{.Err}}</span>
+  {{else}}
+    {{if .SheetsRes}}
+      <div>Sheets export: <span class="px-1.5 py-0.5 rounded text-xs {{if eq .SheetsRes "sent"}}bg-green-100 text-green-700{{else if eq .SheetsRes "deduped"}}bg-gray-100 text-gray-600{{else}}bg-amber-100 text-amber-700{{end}}">{{.SheetsRes}}</span>
+      {{if .SheetsURL}} — <a class="text-blue-600 hover:underline" href="{{.SheetsURL}}" target="_blank" rel="noopener">mở sheet</a>{{end}}</div>
+    {{end}}
+    {{if or .SlackRes .GmailRes}}
+      <div>Digest — Slack: <span class="px-1.5 py-0.5 rounded text-xs {{if eq .SlackRes "sent"}}bg-green-100 text-green-700{{else if eq .SlackRes "deduped"}}bg-gray-100 text-gray-600{{else}}bg-amber-100 text-amber-700{{end}}">{{.SlackRes}}</span>
+      · Gmail: <span class="px-1.5 py-0.5 rounded text-xs {{if eq .GmailRes "sent"}}bg-green-100 text-green-700{{else if eq .GmailRes "deduped"}}bg-gray-100 text-gray-600{{else}}bg-amber-100 text-amber-700{{end}}">{{.GmailRes}}</span></div>
+    {{end}}
+  {{end}}
 </div>
 {{end}}

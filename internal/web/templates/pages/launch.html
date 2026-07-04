@@ -37,5 +37,39 @@
     <div id="launch-error" class="flex-1"></div>
   </div>
 </form>
+
+<div class="max-w-2xl mt-4">
+  <button type="button" class="text-sm text-blue-700 underline"
+          hx-get="/assign/suggest" hx-include="[name='prompt']" hx-vals='js:{task: document.querySelector("[name=prompt]").value}'
+          hx-target="#assignment-suggest" hx-swap="innerHTML">Gợi ý agent cho việc này</button>
+  <div id="assignment-suggest" class="mt-2"></div>
+</div>
+{{end}}
+{{end}}
+
+{{define "assignment_suggest"}}
+{{if not .Task}}
+<p class="text-xs text-gray-400">Nhập mô tả việc ở ô trên rồi bấm "Gợi ý agent".</p>
+{{else if not .Suggestions}}
+<p class="text-xs text-gray-400">Chưa có lịch sử phù hợp với việc này — chưa đủ dữ liệu để gợi ý.</p>
+{{else}}
+<table class="text-sm bg-white border rounded-lg w-full">
+  <thead><tr class="text-left text-gray-500 border-b">
+    <th class="p-2">Agent</th><th class="p-2">Điểm</th><th class="p-2">Tỷ lệ thành công</th>
+    <th class="p-2">Chi phí TB</th><th class="p-2">Hạng</th><th class="p-2">Mẫu</th>
+  </tr></thead>
+  <tbody>
+  {{range .Suggestions}}
+  <tr class="border-b">
+    <td class="p-2 font-mono">{{.AgentName}}</td>
+    <td class="p-2">{{score .Score}}</td>
+    <td class="p-2">{{pct .SuccessRatePct}}</td>
+    <td class="p-2">{{usd .AvgCostUSD}}</td>
+    <td class="p-2">{{if .Grade}}{{.Grade}}{{else}}—{{end}}</td>
+    <td class="p-2">{{.Samples}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
 {{end}}
 {{end}}

@@ -50,21 +50,28 @@ func validLayer(l string) bool {
 	return l == LayerCompany || l == LayerTeam || l == LayerAgent
 }
 
-// SecretFragment returns the first secret-shaped substring in content, for a
-// human-readable save error. Empty when content is clean.
+// SecretFragment returns a REDACTED locating hint for the first
+// secret-shaped substring in content, for a human-readable save error.
+// Empty when content is clean. It returns text from the REDACTED copy (the
+// secret already replaced by [REDACTED]) — never the raw secret bytes — so
+// echoing this hint to a browser cannot leak the leading characters of a
+// real key. The hint carries the [REDACTED] marker plus a little surrounding
+// context to help the author find the spot.
 func SecretFragment(content string) string {
 	red := redact.String(content)
 	if red == content {
 		return ""
 	}
-	// Find the first run that differs — good enough to point the author at it.
+	// Find where the redacted copy first diverges, then return a window from
+	// the REDACTED copy (which shows [REDACTED], not the secret) so the
+	// author gets a locating hint without the value being disclosed.
 	for i := 0; i < len(content) && i < len(red); i++ {
 		if content[i] != red[i] {
-			end := i + 24
-			if end > len(content) {
-				end = len(content)
+			end := i + len("[REDACTED]") + 16
+			if end > len(red) {
+				end = len(red)
 			}
-			return content[i:end]
+			return red[i:end]
 		}
 	}
 	return "(gần cuối nội dung)"

@@ -66,6 +66,39 @@ gws auth status                # Google OK? (bỏ dòng keyring banner)
 #    → post lên Slack/Confluence THẬT. Cẩn trọng: post ngoài = không hoàn tác dễ.
 ```
 
+## 3.5 v7 write-back — config keys + live script
+
+v7 thêm các key `config.yaml` sau (không key nào có mặt định ghi thẳng — mọi write vẫn qua approval + Guard):
+
+| Key | Kiểu | Mặc định | Ghi chú |
+|---|---|---|---|
+| `digest_recipients` | `[]string` | rỗng | Đích DUY NHẤT của UG2b digest (Slack channel + Gmail). Rỗng = không gửi. **Config-pinned (C2)** — không route nào nhận đích từ request. |
+| `export_spreadsheet_id` | `string` | rỗng | Đích DUY NHẤT của UC8 Sheets export. Rỗng = tự tạo 1 sheet lần đầu rồi lưu id vào `settings` để tái dùng. |
+| `sheets_export_enabled` | `bool` | `false` | Bật nút export trên console. |
+| `post_action_checks` | `[]string` | **rỗng (opt-in)** | ⚠️ **Mỗi chuỗi ở đây là lệnh `sh -c` thật, chạy trên cwd agent vừa sửa, sau MỌI run.** Đây là RCE theo thiết kế — chỉ điền chuỗi bạn (operator) tự tin, KHÔNG BAO GIỜ nhận từ web UI/DB/agent. Ưu tiên lệnh không-thực-thi-code như `go vet ./...`; tránh `go test ./...` hay bất cứ gì gọi `go generate` trừ khi tin agent tuyệt đối. |
+| `gate_min_grade` / `gate_min_pass_pct` | setting (không phải YAML) | `C` / `80` | Ngưỡng UE3, sửa qua form `/gate-thresholds`, không sửa file. |
+
+Biến môi trường mới:
+
+| Biến | Dùng khi | Ghi chú |
+|---|---|---|
+| `DANDORI_GWS_BIN` | test/E2E | Trỏ `gws` sang binary khác (vd fake cho test offline). Bỏ trống ở production → dùng `gws` thật trên PATH. |
+| `DANDORI_LIVE` | chạy live script | Phải `=1` mới cho script `scripts/e2e_v7_writeback.sh` chạy thật (cùng với `DRY_RUN=false`). |
+
+### Chạy live E2E write-back thật
+
+`scripts/e2e_v7_writeback.sh` là script DUY NHẤT thật sự ghi lên Jira/Calendar/Sheets/Gmail thật trong bộ E2E — mặc định **không làm gì** (in "skipping live" rồi exit 0) để không ai vô tình chạy write thật khi CI/dev chạy `go test`.
+
+```bash
+# 1. Đảm bảo .env có ATLASSIAN_*, gws auth status OK, gh auth status OK
+# 2. Đảm bảo digest_recipients / export_spreadsheet_id đã set nếu muốn test 2 leg đó
+#    (thiếu thì script tự SKIP leg đó, không fail)
+# 3. Chạy — 2 biến bắt buộc CÙNG LÚC, không cái nào default sang true:
+DANDORI_LIVE=1 DRY_RUN=false ./scripts/e2e_v7_writeback.sh
+```
+
+Script tự compile binary trong chính nó, tạo issue Jira / event Calendar / sheet **mới** (không đụng fixture `SCRUM` cũ), in ra id vừa tạo kèm dòng `MANUAL_CLEANUP:` cho từng thứ cần tự tay xoá (Dandori không tự xoá — an toàn hơn xoá nhầm). Digest tự gửi tới chính `digest_recipients` đã cấu hình (self-digest), không gửi hộ ai khác.
+
 ## 4. An toàn / lưu ý
 
 - **`.env` gitignored** — không commit value thật. `.gitignore` đã set (`.env`, `.env.*`).
