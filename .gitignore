@@ -18,3 +18,9 @@ __pycache__/
 
 # Build artifact
 /dandori
+
+# Removed from history — kept locally only
+/.claude
+/plans
+/AGENTS.md
+/CLAUDE.md
