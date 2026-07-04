@@ -95,4 +95,4 @@ Kế thừa xương đã chạy của dandori-cli, chỉ nâng đúng phần UI 
 
 ## Đọc tiếp
 
-- **Tầm nhìn** — ba trụ LEARN → GOVERN → CAPTURE: [01-vision.md](01-vision.md)
+- **Tầm nhìn** — ba trụ LEARN → GOVERN → CAPTURE: [01-product-vision.md](01-product-vision.md)

@@ -1,6 +1,6 @@
 # Đánh giá khoảng trống sản phẩm — Dandori vs Vision
 
-> Rà soát từ vision gốc ([01-vision.md](01-vision.md)) đối chiếu với code thật (2026-07-04).
+> Rà soát từ vision gốc ([01-product-vision.md](01-product-vision.md)) đối chiếu với code thật (2026-07-04).
 > Mục đích: trả lời thẳng "sản phẩm hiện tại thiếu gì để một tổ chức dám adopt".
 > Căn cứ bằng `file:line`, không phải cảm tính.
 

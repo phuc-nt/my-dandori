@@ -260,5 +260,5 @@ Ba câu về UI hành động (mới, quyết định phần lớn scope Console
 
 ## Đọc tiếp
 
-- **Tầm nhìn** — ba trụ: [01-vision.md](01-vision.md)
+- **Tầm nhìn** — ba trụ: [01-product-vision.md](01-product-vision.md)
 - **Tech stack** — Go + HTMX: [02-tech-stack.md](02-tech-stack.md)

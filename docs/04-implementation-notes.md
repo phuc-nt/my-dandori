@@ -1,6 +1,6 @@
 # Implementation Notes — Dandori MVP
 
-> Kiến trúc THẬT sau khi build (260702), quyết định chốt, giới hạn đã biết. Bổ sung cho [01-vision.md](01-vision.md) / [03-features.md](03-features.md) — không thay chúng.
+> Kiến trúc THẬT sau khi build (260702), quyết định chốt, giới hạn đã biết. Bổ sung cho [01-product-vision.md](01-product-vision.md) / [03-features.md](03-features.md) — không thay chúng.
 
 ## Kiến trúc
 
