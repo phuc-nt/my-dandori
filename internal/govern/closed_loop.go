@@ -57,7 +57,54 @@ func RunClosedLoop(st *store.Store, cfg *config.Config, flagSink func(int64)) (*
 			}
 		}
 	}
+	// Surface flags that have sat open too long, so they reach a human via the
+	// Slack Alerter (which picks up the flag_stale events). Best-effort: a
+	// failure here must not abort the cycle above.
+	scanStaleFlags(st, staleFlagDays(cfg))
 	return res, nil
+}
+
+// staleFlagDays is the age (in days) past which an open flag is considered
+// neglected. Configurable; defaults to 3.
+func staleFlagDays(cfg *config.Config) int {
+	if cfg.NotifyFlagStaleDays > 0 {
+		return cfg.NotifyFlagStaleDays
+	}
+	return 3
+}
+
+// scanStaleFlags emits one flag_stale event per open flag older than days,
+// deduped so a flag is announced at most once (no repeat every tick).
+func scanStaleFlags(st *store.Store, days int) {
+	rows, err := st.DB.Query(`SELECT f.id, COALESCE(r.agent_id,''), f.created_at
+		FROM flags f LEFT JOIN runs r ON r.id = f.run_id
+		WHERE f.status = 'open'
+		  AND f.created_at <= datetime('now', ?)
+		  AND NOT EXISTS (
+		    SELECT 1 FROM events e WHERE e.kind = 'flag_stale' AND e.payload LIKE '%#' || f.id || ' %'
+		  )`, fmt.Sprintf("-%d days", days))
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	type stale struct {
+		id      int64
+		agent   string
+		created string
+	}
+	var flags []stale
+	for rows.Next() {
+		var s stale
+		if err := rows.Scan(&s.id, &s.agent, &s.created); err != nil {
+			return
+		}
+		flags = append(flags, s)
+	}
+	for _, s := range flags {
+		payload := fmt.Sprintf("cảnh báo #%d %s mở quá %d ngày chưa xử lý", s.id, s.agent, days)
+		_, _ = st.DB.Exec(`INSERT INTO events(run_id, ts, kind, tool_name, ok, payload)
+			VALUES(NULL, ?, 'flag_stale', ?, 0, ?)`, store.Now(), s.agent, payload)
+	}
 }
 
 func openLowGradeFlag(st *store.Store, agentID string) (int64, bool) {

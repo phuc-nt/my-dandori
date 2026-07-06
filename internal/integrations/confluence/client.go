@@ -73,6 +73,20 @@ func (c *Client) do(method, path string, body any) ([]byte, int, error) {
 
 var tagRe = regexp.MustCompile(`<[^>]+>`)
 
+// GetSpace is a read-only connection probe: GET a space by id proves the
+// credentials and space id work without creating anything. Used by the
+// settings "Test connection" flow.
+func (c *Client) GetSpace(spaceID string) error {
+	b, code, err := c.do("GET", "/wiki/api/v2/spaces/"+spaceID, nil)
+	if err != nil {
+		return err
+	}
+	if code != 200 {
+		return fmt.Errorf("confluence: HTTP %d: %.120s", code, b)
+	}
+	return nil
+}
+
 // GetPageText fetches a page body (storage format) stripped to plain text.
 func (c *Client) GetPageText(pageID string) (title, text string, err error) {
 	b, code, err := c.do("GET", "/wiki/api/v2/pages/"+pageID+"?body-format=storage", nil)

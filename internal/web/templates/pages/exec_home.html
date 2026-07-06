@@ -4,6 +4,16 @@
   <p class="text-gray-500">Tình hình đội AI của công ty trong 5 giây.</p>
 </div>
 
+{{if .ShowWizard}}
+<div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 flex items-center justify-between">
+  <div>
+    <div class="font-semibold text-blue-900">Chưa có run nào được ghi</div>
+    <div class="text-sm text-blue-700">Hoàn tất 3 bước thiết lập để Dandori bắt đầu theo dõi đội AI.</div>
+  </div>
+  <a href="/welcome" class="bg-blue-600 text-white px-4 py-2 rounded text-sm whitespace-nowrap">Bắt đầu thiết lập →</a>
+</div>
+{{end}}
+
 <!-- Headline: giá trị AI mang lại -->
 <div class="bg-white border rounded-xl p-5 mb-4">
   <div class="text-sm text-gray-500 mb-1">Giá trị AI mang lại</div>

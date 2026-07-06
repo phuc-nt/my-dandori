@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/phuc-nt/dandori/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -41,6 +42,15 @@ var initCmd = &cobra.Command{
 		marker := fmt.Sprintf("agent: %s\nproject: %s\n", agent, filepath.Base(project))
 		if err := os.WriteFile(filepath.Join(project, ".dandori-agent"), []byte(marker), 0o644); err != nil {
 			return err
+		}
+		// Register the project in the central DB so the console health/wizard
+		// reports it as hooked immediately, before any run is captured. Uses the
+		// same store path serve resolves (config.DBPath), not a per-project DB.
+		// Best-effort: a DB failure must not fail the hook install (the primary
+		// job of init).
+		if _, st, err := openStore(); err == nil {
+			_ = st.SetSetting("hooked:"+project, store.Now())
+			_ = st.Close()
 		}
 		fmt.Printf("hooks installed in %s (agent=%s)\n", filepath.Join(project, ".claude", "settings.json"), agent)
 		return nil

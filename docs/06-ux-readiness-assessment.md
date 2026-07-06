@@ -143,3 +143,19 @@ Bốn trong năm đề xuất là **UI/product**, không phải năng lực lõi
 - Thông báo chủ động: gửi qua kênh nào mặc định (Slack digest có sẵn vs email GWS)? Ngưỡng nào đáng báo để không gây nhiễu?
 - Risk overview và tầng executive UX nên gộp vào milestone v8 (Identity & RBAC) hay tách riêng, vì cả hai đều nhắm "tổ chức thật"?
 - Ước lượng tác động cần dữ liệu lịch sử "hành động tương tự", lấy từ đâu và tính lúc nào (khi tạo approval hay lazy khi render)?
+
+---
+
+## Re-score sau v8 (2026-07-06)
+
+Milestone **v8 Onboarding & Executive UX** đã làm cả 5 đề xuất trên. Câu hỏi chưa giải quyết được chốt trong quá trình plan + red-team (xem [plan v8](../plans/260705-1512-dandori-v8-onboarding-executive-ux/plan.md)).
+
+| Tiêu chí | Trước | Sau v8 | Bằng chứng |
+|---|---|---|---|
+| ① Cài đặt low-tech | C+ | **A−** | Credential UI qua trình duyệt ([handlers_settings.go](../internal/web/handlers_settings.go)) + Test connection ([probe.go](../internal/integrations/probe/probe.go)); wizard 3 bước ([handlers_welcome.go](../internal/web/handlers_welcome.go)); `/healthz` có nội dung thật ([health.go](../internal/web/health.go)); `dandori init` ghi `hooked:*` để bước 1 ✓ ngay. Nối 1 integration hoàn toàn qua UI, không sửa file tay. Còn lại: token vẫn cần lấy từ nguồn ngoài (Slack DevTools), giới hạn cố hữu không xoá được. |
+| ② UI tối thiểu bước | A− | **A−** (giữ) | Không đổi; các trang mới theo cùng pattern HTMX fragment. |
+| ③ GOVERN cho C-level | B− (~60%) | **B+/A−** | Thông báo chủ động qua Slack Alerter cho demote/budget/flag-stale, message tiếng Việt + link ([alerts.go](../internal/integrations/slack/alerts.go), [closed_loop.go](../internal/govern/closed_loop.go)); trang tổng rủi ro `/risk` ([handlers_risk.go](../internal/web/handlers_risk.go)); ước lượng tác động trên approval card ([impact_estimate.go](../internal/learn/impact_estimate.go)). Còn lại: healthz `age_days` cảnh báo test cũ nhưng không tự re-probe token chết. |
+
+**Quyết định đã chốt** (khác bản đề xuất, do red-team): (a) Credential ghi `.env` write-through nhưng **yêu cầu restart** để worker nhận (workers bind config lúc boot, không hot-swap được an toàn); (b) thông báo dùng `slack.Alerter` **sẵn có** + events, KHÔNG xây đường notify mới (tránh double-message + latency trong hot-path guardrail); (c) impact estimate advisory-minimal, exclude synthetic action, cache qua settings.
+
+**Nút thắt còn lại cho "tổ chức thật":** đúng như [05], đó là **danh tính & phân quyền** (v9). v8 đóng lớp onboarding/executive UX; v9 đóng lớp auth/RBAC. Hai mảnh cùng thuộc mục tiêu "product-ready cho tổ chức".

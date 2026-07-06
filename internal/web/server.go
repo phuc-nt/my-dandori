@@ -4,6 +4,7 @@
 package web
 
 import (
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/url"
@@ -68,7 +69,20 @@ func (s *Server) originGuard(next http.Handler) http.Handler {
 			return
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			if o := r.Header.Get("Origin"); o != "" && o != "null" {
+			// A same-origin browser form always sends a real Origin. A
+			// sandboxed iframe forces Origin: null, and some drive-by vectors
+			// omit it — both must be rejected on mutations, else an off-origin
+			// page can POST here (e.g. plant credentials on /settings). Absent
+			// Sec-Fetch-Site is the escape hatch for non-browser clients
+			// (curl/tests) which are trusted on localhost.
+			o := r.Header.Get("Origin")
+			switch {
+			case o == "" || o == "null":
+				if sfs := r.Header.Get("Sec-Fetch-Site"); sfs != "" && sfs != "same-origin" && sfs != "none" {
+					http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+					return
+				}
+			default:
 				if u, err := url.Parse(o); err != nil || !allowed[u.Host] {
 					http.Error(w, "cross-origin request rejected", http.StatusForbidden)
 					return
@@ -82,7 +96,7 @@ func (s *Server) originGuard(next http.Handler) http.Handler {
 func (s *Server) routes() {
 	s.mux.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"ok":true}`))
+		_ = json.NewEncoder(w).Encode(Collect(s.Cfg, s.Store))
 	})
 	s.mux.Handle("/static/*", staticHandler())
 
@@ -150,6 +164,20 @@ func (s *Server) routes() {
 	// drive-by <img src> spam the append-only chain past the origin guard.
 	s.mux.Post("/export/compliance", s.handleComplianceExport)
 	s.mux.Post("/reports/confluence", s.handleConfluenceReport)
+
+	// v8 onboarding: credential settings + test connection (write-through .env,
+	// restart-required for workers).
+	s.mux.Get("/settings/integrations", s.handleSettings)
+	s.mux.Post("/settings/integrations/{name}", s.handleSettingsSave)
+	s.mux.Post("/settings/integrations/{name}/test", s.handleSettingsTest)
+
+	// v8 onboarding wizard.
+	s.mux.Get("/welcome", s.handleWelcome)
+	s.mux.Get("/welcome/fragment", s.handleWelcomeFragment)
+
+	// v8 risk overview (reuses reviews_pending + budgets_table partials).
+	s.mux.Get("/risk", s.handleRisk)
+	s.mux.Get("/risk/fragment", s.handleRiskFragment)
 
 	s.registerPhase02Routes()
 	s.registerPhase03Routes()

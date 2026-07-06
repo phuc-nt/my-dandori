@@ -1,0 +1,132 @@
+{{define "content"}}
+<h1 class="text-2xl font-bold mb-1">Tích hợp</h1>
+<p class="text-gray-500 mb-4">
+  Nối Dandori với Jira, Slack, GitHub, Google và OpenRouter. Dán token, bấm
+  <b>Kiểm tra</b> để thử kết nối, rồi <b>Lưu</b>.
+  <span class="text-amber-700">Sau khi nối lần đầu, khởi động lại Dandori để các tác vụ nền (cảnh báo Slack, đồng bộ) hoạt động.</span>
+</p>
+
+<div class="space-y-4 max-w-2xl">
+
+  {{/* Jira + Confluence share the Atlassian credentials */}}
+  <div class="bg-white border rounded-lg p-4">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-semibold">Atlassian (Jira + Confluence)</h2>
+      {{template "status_pill" intstatus .Health "jira"}}
+    </div>
+    <form hx-post="/settings/integrations/jira" hx-target="#result-jira" hx-swap="innerHTML" class="space-y-2">
+      <label class="block text-sm">Site (chỉ tên, ví dụ <code>acme</code>)<br>
+        <input name="ATLASSIAN_SITE_NAME" class="border rounded px-2 py-1 w-full" placeholder="{{index .Masked "ATLASSIAN_SITE_NAME"}}"></label>
+      <label class="block text-sm">Email<br>
+        <input name="ATLASSIAN_USER_EMAIL" class="border rounded px-2 py-1 w-full" placeholder="{{index .Masked "ATLASSIAN_USER_EMAIL"}}"></label>
+      <label class="block text-sm">API token<br>
+        <input name="ATLASSIAN_API_TOKEN" type="password" class="border rounded px-2 py-1 w-full" placeholder="{{index .Masked "ATLASSIAN_API_TOKEN"}}"></label>
+      <label class="block text-sm">Confluence space id (tuỳ chọn)<br>
+        <input name="CONFLUENCE_SPACE_ID" class="border rounded px-2 py-1 w-full"></label>
+      <div class="flex gap-2 pt-1">
+        <button class="bg-slate-700 text-white px-4 py-2 rounded text-sm">Lưu</button>
+        <button type="button" class="bg-gray-200 px-4 py-2 rounded text-sm"
+          hx-post="/settings/integrations/jira/test" hx-target="#result-jira" hx-swap="innerHTML">Kiểm tra</button>
+      </div>
+    </form>
+    <div id="result-jira" class="mt-2">{{template "last_test_line" intstatus .Health "jira"}}</div>
+  </div>
+
+  {{/* Slack */}}
+  <div class="bg-white border rounded-lg p-4">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-semibold">Slack</h2>
+      {{template "status_pill" intstatus .Health "slack"}}
+    </div>
+    <p class="text-xs text-gray-500 mb-2">Lấy <code>xoxc</code>/<code>xoxd</code> từ cookie trình duyệt khi đăng nhập Slack (DevTools → Application → Cookies). Giữ nguyên phần mã hoá URL.</p>
+    <form hx-post="/settings/integrations/slack" hx-target="#result-slack" hx-swap="innerHTML" class="space-y-2">
+      <label class="block text-sm">xoxc token<br>
+        <input name="SLACK_XOXC_TOKEN" type="password" class="border rounded px-2 py-1 w-full" placeholder="{{index .Masked "SLACK_XOXC_TOKEN"}}"></label>
+      <label class="block text-sm">xoxd token<br>
+        <input name="SLACK_XOXD_TOKEN" type="password" class="border rounded px-2 py-1 w-full" placeholder="{{index .Masked "SLACK_XOXD_TOKEN"}}"></label>
+      <label class="block text-sm">Team domain<br>
+        <input name="SLACK_TEAM_DOMAIN" class="border rounded px-2 py-1 w-full"></label>
+      <div class="flex gap-2 pt-1">
+        <button class="bg-slate-700 text-white px-4 py-2 rounded text-sm">Lưu</button>
+        <button type="button" class="bg-gray-200 px-4 py-2 rounded text-sm"
+          hx-post="/settings/integrations/slack/test" hx-target="#result-slack" hx-swap="innerHTML">Kiểm tra</button>
+      </div>
+    </form>
+    <div id="result-slack" class="mt-2">{{template "last_test_line" intstatus .Health "slack"}}</div>
+  </div>
+
+  {{/* OpenRouter */}}
+  <div class="bg-white border rounded-lg p-4">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-semibold">OpenRouter (LLM)</h2>
+      {{template "status_pill" intstatus .Health "openrouter"}}
+    </div>
+    <form hx-post="/settings/integrations/openrouter" hx-target="#result-openrouter" hx-swap="innerHTML" class="space-y-2">
+      <label class="block text-sm">API key<br>
+        <input name="OPENROUTER_API_KEY" type="password" class="border rounded px-2 py-1 w-full" placeholder="{{index .Masked "OPENROUTER_API_KEY"}}"></label>
+      <div class="flex gap-2 pt-1">
+        <button class="bg-slate-700 text-white px-4 py-2 rounded text-sm">Lưu</button>
+        <button type="button" class="bg-gray-200 px-4 py-2 rounded text-sm"
+          hx-post="/settings/integrations/openrouter/test" hx-target="#result-openrouter" hx-swap="innerHTML">Kiểm tra</button>
+      </div>
+    </form>
+    <div id="result-openrouter" class="mt-2">{{template "last_test_line" intstatus .Health "openrouter"}}</div>
+  </div>
+
+  {{/* GitHub + GWS: keyring CLI, cannot paste — test only */}}
+  <div class="bg-white border rounded-lg p-4">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-semibold">GitHub</h2>
+      {{template "status_pill" intstatus .Health "github"}}
+    </div>
+    <p class="text-xs text-gray-500 mb-2">Đăng nhập bằng CLI: <code>gh auth login</code>. Token nằm trong keyring hệ thống, không dán ở đây.</p>
+    <button class="bg-gray-200 px-4 py-2 rounded text-sm"
+      hx-post="/settings/integrations/github/test" hx-target="#result-github" hx-swap="innerHTML">Kiểm tra</button>
+    <div id="result-github" class="mt-2">{{template "last_test_line" intstatus .Health "github"}}</div>
+  </div>
+
+  <div class="bg-white border rounded-lg p-4">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-semibold">Google Workspace</h2>
+      {{template "status_pill" intstatus .Health "gws"}}
+    </div>
+    <p class="text-xs text-gray-500 mb-2">Đăng nhập bằng CLI: <code>gws auth</code>. Token trong keyring, không dán ở đây.</p>
+    <button class="bg-gray-200 px-4 py-2 rounded text-sm"
+      hx-post="/settings/integrations/gws/test" hx-target="#result-gws" hx-swap="innerHTML">Kiểm tra</button>
+    <div id="result-gws" class="mt-2">{{template "last_test_line" intstatus .Health "gws"}}</div>
+  </div>
+
+</div>
+{{end}}
+
+{{/* inttest_result: the fragment returned after a Test or Save. */}}
+{{define "inttest_result"}}
+  {{if .OK}}
+    <div class="text-sm text-green-700">✓ {{.Note}}</div>
+  {{else}}
+    <div class="text-sm text-red-700">✗ {{.Note}}</div>
+  {{end}}
+  {{if .Restart}}<div class="text-xs text-amber-700 mt-1">Đã lưu. Khởi động lại Dandori để kích hoạt tác vụ nền.</div>{{end}}
+{{end}}
+
+{{/* last_test_line: cached status shown on page load. */}}
+{{define "last_test_line"}}
+  {{if .LastTest}}
+    {{if and .LastTest.OK (lt .LastTest.AgeDays 7.0)}}
+      <div class="text-xs text-green-700">✓ {{.LastTest.Note}}</div>
+    {{else if .LastTest.OK}}
+      <div class="text-xs text-gray-500">Đã kiểm tra {{printf "%.0f" .LastTest.AgeDays}} ngày trước — nên kiểm tra lại</div>
+    {{else}}
+      <div class="text-xs text-red-700">✗ {{.LastTest.Note}}</div>
+    {{end}}
+  {{end}}
+{{end}}
+
+{{/* status_pill: configured / not configured chip in each card header. */}}
+{{define "status_pill"}}
+  {{if .Configured}}
+    <span class="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">đã nối</span>
+  {{else}}
+    <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">chưa nối</span>
+  {{end}}
+{{end}}

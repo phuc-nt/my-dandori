@@ -1,0 +1,84 @@
+{{define "content"}}
+<div class="mb-4">
+  <h1 class="text-2xl font-bold">Rủi ro</h1>
+  <p class="text-gray-500">Những gì cần bạn chú ý ngay: cần duyệt, agent yếu, cảnh báo tồn, ngân sách nóng.</p>
+</div>
+
+<div hx-get="/risk/fragment" hx-trigger="every 10s" hx-swap="innerHTML">
+  {{template "risk_body" .}}
+</div>
+{{end}}
+
+{{define "risk_body"}}
+<div class="space-y-6">
+
+  {{/* 1. Cần duyệt — reuse the reviews_pending partial verbatim */}}
+  <section>
+    <h2 class="font-semibold mb-2">Cần duyệt</h2>
+    {{if .Pending}}
+      {{template "reviews_pending" .}}
+    {{else}}
+      <div class="text-sm text-green-700">✓ Không có gì chờ duyệt.</div>
+    {{end}}
+  </section>
+
+  {{/* 2. Agent cần chú ý — the one genuinely new block */}}
+  <section>
+    <h2 class="font-semibold mb-2">Agent cần chú ý</h2>
+    {{if .Attention}}
+    <div class="bg-white border rounded-lg overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-100 text-left"><tr>
+          <th class="p-2">Agent</th><th class="p-2">Hạng</th>
+          <th class="p-2 text-right">Điểm</th><th class="p-2 text-right">Xu hướng 7 ngày</th>
+        </tr></thead>
+        <tbody>
+        {{range .Attention}}
+          <tr class="border-t">
+            <td class="p-2"><a class="text-blue-600 hover:underline" href="/dash/agent/{{.AgentID}}">{{.AgentName}}</a></td>
+            <td class="p-2"><span class="{{if eq .Grade.Letter "F"}}text-red-700 font-bold{{else}}text-amber-700 font-semibold{{end}}">{{.Grade.Letter}}</span></td>
+            <td class="p-2 text-right">{{score .Composite}}</td>
+            <td class="p-2 text-right {{if lt .TrendDelta 0.0}}text-red-600{{else}}text-green-600{{end}}">{{score .TrendDelta}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+      <div class="text-sm text-green-700">✓ Không có agent nào ở hạng D/F.</div>
+    {{end}}
+  </section>
+
+  {{/* 3. Cảnh báo đang mở */}}
+  <section>
+    <h2 class="font-semibold mb-2">Cảnh báo đang mở</h2>
+    {{if .Flags}}
+    <div class="bg-white border rounded-lg overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-100 text-left"><tr>
+          <th class="p-2">#</th><th class="p-2">Agent</th><th class="p-2">Lý do</th><th class="p-2 text-right">Tuổi</th>
+        </tr></thead>
+        <tbody>
+        {{range .Flags}}
+          <tr class="border-t">
+            <td class="p-2">{{.ID}}</td><td class="p-2">{{.Agent}}</td>
+            <td class="p-2">{{.Reason}}</td>
+            <td class="p-2 text-right {{if gt .AgeDays 3}}text-red-600{{end}}">{{.AgeDays}} ngày</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+      <div class="text-sm text-green-700">✓ Không có cảnh báo nào đang mở.</div>
+    {{end}}
+  </section>
+
+  {{/* 4. Ngân sách — reuse the budgets_table partial verbatim */}}
+  <section>
+    <h2 class="font-semibold mb-2">Ngân sách</h2>
+    {{template "budgets_table" .}}
+  </section>
+
+</div>
+{{end}}

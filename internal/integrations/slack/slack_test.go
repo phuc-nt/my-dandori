@@ -59,6 +59,53 @@ func liveEnv(t *testing.T) (*store.Store, *integrations.Guard) {
 	return st, &integrations.Guard{Cfg: cfg, St: st}
 }
 
+func TestAlertVietnameseFormatAndDeepLink(t *testing.T) {
+	st, guard := liveEnv(t)
+	client, fake := newFake(t)
+	a := &Alerter{St: st, Client: client, Guard: guard, Channel: "C1", BaseURL: "https://dandori.test"}
+
+	testseed.Agent(t, st, "a1")
+	testseed.Run(t, st, "r1", "a1", "running", 0, 0)
+	testseed.Event(t, st, "r1", "closed_loop", "a1", 0, "grade F: agent a1")
+
+	if err := a.Dispatch(); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.posts) != 1 {
+		t.Fatalf("posts: %d, want 1", len(fake.posts))
+	}
+	msg := fake.posts[0]
+	// Business-language, not the old ":rotating_light: Dandori closed_loop".
+	if strings.Contains(msg, "closed_loop") || strings.Contains(msg, "rotating_light") {
+		t.Errorf("message still technical: %q", msg)
+	}
+	if !strings.Contains(msg, "hạ quyền tự chủ") {
+		t.Errorf("message missing Vietnamese lead: %q", msg)
+	}
+	if !strings.Contains(msg, "https://dandori.test/dash/org") {
+		t.Errorf("message missing deep link: %q", msg)
+	}
+}
+
+func TestAlertFlagStaleKindIsDispatched(t *testing.T) {
+	st, guard := liveEnv(t)
+	client, fake := newFake(t)
+	a := &Alerter{St: st, Client: client, Guard: guard, Channel: "C1", BaseURL: "https://d.test"}
+
+	testseed.Agent(t, st, "a1")
+	testseed.Run(t, st, "r1", "a1", "running", 0, 0)
+	testseed.Event(t, st, "r1", "flag_stale", "a1", 0, "cảnh báo #7 a1 mở quá 3 ngày chưa xử lý")
+	if err := a.Dispatch(); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.posts) != 1 {
+		t.Fatalf("flag_stale not dispatched: %d posts", len(fake.posts))
+	}
+	if !strings.Contains(fake.posts[0], "chưa xử lý") {
+		t.Errorf("flag_stale payload missing: %q", fake.posts[0])
+	}
+}
+
 func TestAlertDedup(t *testing.T) {
 	st, guard := liveEnv(t)
 	client, fake := newFake(t)

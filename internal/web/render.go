@@ -20,6 +20,7 @@ var pageNames = []string{
 	"standup", "dash_org", "dash_project", "dash_agent",
 	"runs", "run_detail", "run_compare", "reviews", "budgets", "provenance", "rules", "spikes", "playbooks",
 	"chat", "exec_home", "contexts", "launch", "gate_thresholds", "wallboard",
+	"settings_integrations", "welcome", "risk",
 }
 
 type renderer struct {
@@ -35,6 +36,15 @@ type navItem struct {
 
 var tmplFuncs = template.FuncMap{
 	"list": func(items ...any) []any { return items },
+	// intstatus finds one integration's health by name for the settings page.
+	"intstatus": func(h Health, name string) IntegrationHealth {
+		for _, i := range h.Integrations {
+			if i.Name == name {
+				return i
+			}
+		}
+		return IntegrationHealth{Name: name}
+	},
 	"navctx": func(active, item, href, icon, label string) navItem {
 		return navItem{Active: active, Item: item, Href: href, Icon: icon, Label: label}
 	},

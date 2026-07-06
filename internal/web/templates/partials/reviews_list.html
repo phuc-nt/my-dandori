@@ -7,6 +7,9 @@
         <div class="font-mono text-sm text-gray-500">#{{.ID}} · run <a class="text-blue-600 hover:underline" href="/runs/{{.RunID}}">{{short .RunID}}</a> · {{.RequestedAt}}</div>
         <div class="font-semibold mt-1">{{.Action}}</div>
         <div class="text-sm text-gray-600">{{.Reason}}</div>
+        {{if .Impact}}
+        <div class="text-xs text-gray-500 mt-1">Ước lượng từ {{.Impact.Samples}} lần tương tự trước: trung bình {{usd .Impact.AvgCost}}, đụng {{printf "%.0f" .Impact.AvgFiles}} file</div>
+        {{end}}
       </div>
       <div class="flex flex-col gap-2 min-w-56">
         <form method="post" action="/reviews/{{.ID}}/decide" class="flex gap-2">

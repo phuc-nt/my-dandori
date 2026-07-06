@@ -39,6 +39,10 @@ type ApprovalRow struct {
 	// cannot hide past a preview boundary). Empty for every other action type.
 	ImportContent string
 	ImportRunes   int
+	// Impact is an advisory estimate (avg cost/files of similar past approvals
+	// by this agent), nil when there is not enough history. Populated only for
+	// pending items on the reviews/exec inbox.
+	Impact *learn.Impact
 }
 
 // BudgetRow shows a budget scope with its live spend and end-of-month
@@ -144,8 +148,24 @@ func (s *Server) queryApprovals(status string) ([]ApprovalRow, error) {
 		if strings.HasPrefix(out[i].Action, "observer:context-import:") {
 			s.loadImportContent(&out[i])
 		}
+		// Advisory impact estimate for pending items (the ones a human is about
+		// to decide). History-based, cached; skipped for decided rows.
+		if out[i].Status == "pending" && out[i].RunID != "" {
+			if agent := s.runAgent(out[i].RunID); agent != "" {
+				if im, ok := learn.EstimateImpact(s.Store, agent, out[i].Action); ok {
+					out[i].Impact = im
+				}
+			}
+		}
 	}
 	return out, nil
+}
+
+// runAgent returns the agent_id for a run id, or "" if unknown.
+func (s *Server) runAgent(runID string) string {
+	var agent string
+	_ = s.Store.DB.QueryRow(`SELECT COALESCE(agent_id,'') FROM runs WHERE id = ?`, runID).Scan(&agent)
+	return agent
 }
 
 // loadImportContent fills ImportContent/ImportRunes for a context-import

@@ -8,11 +8,14 @@ Vision đầy đủ: [docs/01-product-vision.md](docs/01-product-vision.md) · T
 
 ```bash
 go build ./cmd/dandori          # 1 binary pure-Go, không CGO
-./dandori init --project ~/code/my-app --agent backend-agent
 ./dandori serve                 # console tại http://127.0.0.1:4777
 ```
 
-`init` cài 4 hooks (SessionStart / PreToolUse / PostToolUse / Stop) vào `.claude/settings.json` của project — merge, không phá hooks sẵn có, idempotent. Từ đó mọi phiên Claude Code trong project được tự động ghi lại, và **mọi tool-call đi qua guardrail engine**.
+Mở console lần đầu sẽ thấy **trình hướng dẫn thiết lập** (`/welcome`) với 3 bước:
+
+1. **Kết nối một dự án**: chạy `dandori init --project ~/code/my-app --agent backend-agent`. Lệnh này cài 4 hooks (SessionStart / PreToolUse / PostToolUse / Stop) vào `.claude/settings.json` của project — merge, không phá hooks sẵn có, idempotent. Từ đó mọi phiên Claude Code trong project được tự động ghi lại, và **mọi tool-call đi qua guardrail engine**.
+2. **Nối tích hợp**: mở `/settings/integrations`, dán token Jira/Slack/OpenRouter và bấm **Kiểm tra**. **Sau khi nối lần đầu, khởi động lại `dandori serve`** để các tác vụ nền (cảnh báo Slack, đồng bộ) hoạt động.
+3. **Chạy thử**: chạy một phiên AI trong project đã kết nối. Khi có run đầu tiên, thiết lập hoàn tất.
 
 ## Vòng đời một tool-call
 
@@ -74,7 +77,8 @@ Console có 2 mặt (nút chuyển ở thanh nav, nhớ bằng cookie):
 - `/` — **Morning standup**: đêm qua chạy gì, cái gì cần bạn hôm nay.
 - `/dash/org` — leaderboard calibrate theo fleet, cost trend, grade distribution, ROI.
 - `/runs`, `/runs/{id}` — drilldown timeline từng tool-call; kill / flag→Jira / sửa task key.
-- `/reviews` — hàng đợi duyệt live-poll; approve/reject kèm lý do → audit bất biến.
+- `/risk` — tổng quan rủi ro một trang: cần duyệt, agent hạng D/F, cảnh báo tồn, ngân sách nóng.
+- `/reviews` — hàng đợi duyệt live-poll; approve/reject kèm lý do → audit bất biến. Mỗi item hiện ước lượng tác động từ lịch sử.
 - `/budgets` — đặt trần chi tiêu bằng form; breaker áp dụng ngay tool-call kế tiếp.
 - `/provenance` — mọi con số lần ngược về đúng run/event sinh ra nó.
 - `/rules` — bật/tắt guardrail rule.
@@ -82,6 +86,8 @@ Console có 2 mặt (nút chuyển ở thanh nav, nhớ bằng cookie):
 ## Config & credential
 
 Config: `~/.dandori/config.yaml` (DB path, listen, pricing, budget, gate checks). Secret **chỉ** ở env / `.env` (gitignored): `ATLASSIAN_*`, `SLACK_XOXC_TOKEN`/`SLACK_XOXD_TOKEN`, `SLACK_REPORT_CHANNEL`. GitHub qua `gh` CLI keyring.
+
+**Nhập credential qua UI:** trang `/settings/integrations` cho phép dán token và bấm Kiểm tra ngay trong trình duyệt — ghi thẳng vào `./.env` (atomic, mode 0600). Chỉ ghi được đúng các key của tích hợp; không bao giờ ghi được `DRY_RUN`/`AGENT_WRITE_DISABLED`/`SLACK_APPROVERS`. Sau khi lưu credential lần đầu, **khởi động lại `dandori serve`** để worker nhận cấu hình mới.
 
 **An toàn ghi:** `DRY_RUN=true` mặc định (mọi write Jira/Slack chỉ log); `AGENT_WRITE_DISABLED=true` chặn tuyệt đối. Chạy thật: `DRY_RUN=false dandori serve`.
 

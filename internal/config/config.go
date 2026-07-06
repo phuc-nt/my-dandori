@@ -44,6 +44,11 @@ type Config struct {
 	WatchIntervalSeconds int      `yaml:"watch_interval_seconds"`
 	ProjectsDir          string   `yaml:"projects_dir"`
 	LearnWindowDays      int      `yaml:"learn_window_days"`
+	// v8 notifications. PublicBaseURL is the console origin used to build deep
+	// links in Slack alerts. NotifyFlagStaleDays is the age past which an open
+	// flag is announced (default 3).
+	PublicBaseURL       string `yaml:"public_base_url"`
+	NotifyFlagStaleDays int    `yaml:"notify_flag_stale_days"`
 	CalibrateWithHumans  bool     `yaml:"calibrate_with_humans"`
 	OpenRouterKey        string   `yaml:"-"`
 	OpenRouterModel      string   `yaml:"-"`
@@ -150,6 +155,11 @@ func (c *Config) validateDigestRecipients() {
 	}
 }
 
+// ReloadSecretsFromEnv re-reads env-sourced fields into c after the process
+// env was updated (e.g. the settings UI saved a credential and os.Setenv'd it).
+// It only refreshes fields that come from env; it does not re-read the YAML.
+func (c *Config) ReloadSecretsFromEnv() { c.applyEnv() }
+
 func (c *Config) applyEnv() {
 	if v := os.Getenv("DANDORI_DB"); v != "" {
 		c.DBPath = v
@@ -171,6 +181,14 @@ func (c *Config) applyEnv() {
 	if v := os.Getenv("DANDORI_GATE_WAIT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			c.GateWaitSeconds = n
+		}
+	}
+	if v := os.Getenv("PUBLIC_BASE_URL"); v != "" {
+		c.PublicBaseURL = v
+	}
+	if v := os.Getenv("NOTIFY_FLAG_STALE_DAYS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			c.NotifyFlagStaleDays = n
 		}
 	}
 	c.OpenRouterKey = os.Getenv("OPENROUTER_API_KEY")

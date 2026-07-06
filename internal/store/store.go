@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -69,4 +70,21 @@ func (s *Store) SetSetting(key, value string) error {
 	_, err := s.DB.Exec(`INSERT INTO settings(key, value) VALUES(?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
 	return err
+}
+
+// CountSettingsPrefix counts settings keys starting with prefix. The prefix is
+// matched literally (LIKE wildcards in it are escaped) so callers pass a plain
+// string like "hooked:".
+func (s *Store) CountSettingsPrefix(prefix string) int {
+	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(prefix)
+	var n int
+	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM settings WHERE key LIKE ? ESCAPE '\'`, esc+"%").Scan(&n)
+	return n
+}
+
+// CountRuns returns the total number of captured runs.
+func (s *Store) CountRuns() int {
+	var n int
+	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM runs`).Scan(&n)
+	return n
 }

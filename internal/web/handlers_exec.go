@@ -34,6 +34,9 @@ func (s *Server) handleExecHome(w http.ResponseWriter, r *http.Request) {
 		"View":         view,
 		"ContextCount": ctxCount,
 		"ContextLast":  ctxLast,
+		// Show the first-run onboarding banner until at least one run is
+		// captured — the point at which setup is demonstrably working.
+		"ShowWizard": s.Store.CountRuns() == 0,
 	})
 }
 

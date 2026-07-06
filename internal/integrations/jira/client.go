@@ -62,6 +62,20 @@ func (c *Client) do(method, path string, body any) ([]byte, int, error) {
 	return b, resp.StatusCode, err
 }
 
+// Myself is a read-only connection probe: GET /myself returns the
+// authenticated account, proving the credentials work without touching any
+// project data. Used by the settings "Test connection" flow.
+func (c *Client) Myself() error {
+	b, code, err := c.do("GET", "/rest/api/3/myself", nil)
+	if err != nil {
+		return err
+	}
+	if code != 200 {
+		return fmt.Errorf("jira: HTTP %d: %.120s", code, b)
+	}
+	return nil
+}
+
 // Issue is the slice of a Jira issue Dandori cares about.
 type Issue struct {
 	Key      string

@@ -111,7 +111,7 @@ func slackWorker(ctx context.Context, cfg *config.Config, st *store.Store) {
 	}
 	client := slack.New(i.SlackXoxc, i.SlackXoxd)
 	guard := &integrations.Guard{Cfg: cfg, St: st}
-	alerter := &slack.Alerter{St: st, Client: client, Guard: guard, Channel: i.SlackChannel}
+	alerter := &slack.Alerter{St: st, Client: client, Guard: guard, Channel: i.SlackChannel, BaseURL: baseURL(cfg)}
 	bridge := &slack.ApprovalBridge{St: st, Client: client, Guard: guard,
 		Channel: i.SlackChannel, ConsoleURL: "http://" + cfg.Listen, Approvers: cfg.Approvers}
 	t := time.NewTicker(5 * time.Second)
@@ -219,6 +219,16 @@ func escalateStalePending(cfg *config.Config, st *store.Store) {
 			VALUES(NULL, ?, 'approval_escalation', '', 0, ?)`, store.Now(),
 			redact.String(fmt.Sprintf("approval #%d unanswered past SLA: %.80s — decide at http://%s/reviews", s.id, s.action, cfg.Listen)))
 	}
+}
+
+// baseURL is the console origin used for deep links in Slack alerts. Prefer an
+// explicitly configured public URL; otherwise fall back to the local listen
+// address (fine for single-machine deployments).
+func baseURL(cfg *config.Config) string {
+	if cfg.PublicBaseURL != "" {
+		return cfg.PublicBaseURL
+	}
+	return "http://" + cfg.Listen
 }
 
 func init() {

@@ -108,3 +108,42 @@ func TestClosedLoopProposalApplyAndRecovery(t *testing.T) {
 		t.Errorf("resolved: %d (flag %v)", res3.Resolved, flagID)
 	}
 }
+
+func TestScanStaleFlagsEmitsOncePerFlag(t *testing.T) {
+	e := testEngine(t)
+	// An open flag created 5 days ago (older than the 3-day default). run_id
+	// NULL keeps the test on the stale-scan logic without a full agent/run graph.
+	if _, err := e.St.DB.Exec(`INSERT INTO flags(run_id, reason, status, created_at)
+		VALUES(NULL, 'low grade F: x', 'open', datetime('now','-5 days'))`); err != nil {
+		t.Fatal(err)
+	}
+
+	scanStaleFlags(e.St, 3)
+	n := countEvents(t, e, "flag_stale")
+	if n != 1 {
+		t.Fatalf("flag_stale events after first scan: %d, want 1", n)
+	}
+	// Re-scan must NOT emit again (deduped) — no repeat every tick.
+	scanStaleFlags(e.St, 3)
+	if n := countEvents(t, e, "flag_stale"); n != 1 {
+		t.Errorf("flag_stale events after re-scan: %d, want 1 (deduped)", n)
+	}
+}
+
+func TestScanStaleFlagsIgnoresFreshAndClosed(t *testing.T) {
+	e := testEngine(t)
+	// Fresh open flag (today) and a closed old flag → neither is stale.
+	e.St.DB.Exec(`INSERT INTO flags(run_id, reason, status, created_at) VALUES(NULL,'x','open',?)`, store.Now())
+	e.St.DB.Exec(`INSERT INTO flags(run_id, reason, status, created_at) VALUES(NULL,'y','resolved',datetime('now','-9 days'))`)
+	scanStaleFlags(e.St, 3)
+	if n := countEvents(t, e, "flag_stale"); n != 0 {
+		t.Errorf("flag_stale events: %d, want 0", n)
+	}
+}
+
+func countEvents(t *testing.T, e *Engine, kind string) int {
+	t.Helper()
+	var n int
+	e.St.DB.QueryRow(`SELECT count(*) FROM events WHERE kind = ?`, kind).Scan(&n)
+	return n
+}

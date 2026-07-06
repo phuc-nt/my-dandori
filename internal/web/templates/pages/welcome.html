@@ -1,0 +1,56 @@
+{{define "content"}}
+<div class="max-w-2xl">
+  <h1 class="text-2xl font-bold mb-1">Thiết lập Dandori</h1>
+  <p class="text-gray-500 mb-5">Ba bước để Dandori bắt đầu theo dõi đội AI của bạn. Trang tự cập nhật khi mỗi bước hoàn tất.</p>
+
+  <div hx-get="/welcome/fragment" hx-trigger="load, every 5s" hx-swap="innerHTML">
+    {{template "wizard_steps" .}}
+  </div>
+</div>
+{{end}}
+
+{{define "wizard_steps"}}
+<div class="space-y-4">
+
+  {{/* Step 1: hook a project */}}
+  <div class="bg-white border rounded-lg p-4 flex gap-3">
+    <div>{{if .W.HookProject.Done}}<span class="text-green-600 text-xl">✓</span>{{else}}<span class="text-gray-300 text-xl">①</span>{{end}}</div>
+    <div class="flex-1">
+      <div class="font-semibold">Kết nối một dự án</div>
+      <p class="text-sm text-gray-600 mb-2">Cài hook Dandori vào dự án để mỗi lần chạy AI được ghi lại. Chạy lệnh này trong thư mục dự án:</p>
+      <div class="bg-gray-900 text-gray-100 rounded px-3 py-2 text-sm font-mono flex items-center justify-between">
+        <code id="init-cmd">dandori init --project . --agent my-agent</code>
+        <button type="button" class="text-xs text-gray-400 hover:text-white"
+          onclick="navigator.clipboard.writeText(document.getElementById('init-cmd').textContent)">Sao chép</button>
+      </div>
+    </div>
+  </div>
+
+  {{/* Step 2: connect an integration */}}
+  <div class="bg-white border rounded-lg p-4 flex gap-3">
+    <div>{{if .W.Connect.Done}}<span class="text-green-600 text-xl">✓</span>{{else}}<span class="text-gray-300 text-xl">②</span>{{end}}</div>
+    <div class="flex-1">
+      <div class="font-semibold">Nối một tích hợp</div>
+      <p class="text-sm text-gray-600 mb-2">Tối thiểu nối OpenRouter để có nhận xét AI. Nối Jira/Slack/GitHub để theo dõi đầy đủ.</p>
+      <a href="/settings/integrations" class="inline-block bg-slate-700 text-white px-3 py-1.5 rounded text-sm">Mở trang Tích hợp →</a>
+      <p class="text-xs text-amber-700 mt-2">Sau khi nối lần đầu, khởi động lại Dandori để tác vụ nền (cảnh báo Slack, đồng bộ) hoạt động.</p>
+    </div>
+  </div>
+
+  {{/* Step 3: run once */}}
+  <div class="bg-white border rounded-lg p-4 flex gap-3">
+    <div>{{if .W.FirstRun.Done}}<span class="text-green-600 text-xl">✓</span>{{else}}<span class="text-gray-300 text-xl">③</span>{{end}}</div>
+    <div class="flex-1">
+      <div class="font-semibold">Chạy thử một phiên</div>
+      <p class="text-sm text-gray-600">Chạy một phiên AI (ví dụ Claude Code) trong dự án đã kết nối ở bước 1, hoặc phóng một run từ <a href="/launch" class="text-blue-600 underline">trang Phóng run</a>. Khi có run đầu tiên, bước này tự đánh dấu hoàn tất.</p>
+    </div>
+  </div>
+
+  {{if .W.AllDone}}
+  <div class="bg-green-50 border border-green-200 rounded-lg p-4 text-green-800">
+    ✓ Thiết lập xong. <a href="/" class="underline">Về bảng điều hành</a>.
+  </div>
+  {{end}}
+
+</div>
+{{end}}
