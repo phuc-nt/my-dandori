@@ -54,14 +54,32 @@ func (g *Ingestor) ingestTranscript(path string, mtime time.Time) (bool, error) 
 	if err != nil {
 		return false, err
 	}
+	// First sighting snapshots the git before-state (idempotent via the
+	// head_before-IS-NULL guard). The watcher sees a session only after it
+	// starts, so this delta is partial — it misses edits made before the
+	// first sweep. Partial-but-real beats the 0 lines watcher runs recorded
+	// before; provenance in docs notes the undercount.
+	g.snapshotStart(runID, cwd)
+	// A stale transcript means the session finished. Flip status BEFORE
+	// reconciling so reconcileWatcherTimes (which sets ended_at only once the
+	// run is no longer 'running') records the true end time on this sweep.
+	if time.Since(mtime) > staleAfter {
+		// ended_at is left to reconcile (from the transcript's last
+		// timestamp), NOT the file mtime — mtime is when the watcher last
+		// touched the file, which for a long-idle session drifts far past
+		// the real end and produced the negative durations this fixes. When
+		// the transcript has no usable timestamp, ended_at stays NULL
+		// (unknown, not fabricated).
+		if _, err = g.St.DB.Exec(`UPDATE runs SET status = 'done'
+			WHERE id = ? AND status = 'running' AND source = 'watcher'`, runID); err != nil {
+			return true, err
+		}
+		g.recordGitDelta(runID, cwd)
+	}
 	if err := g.ReconcileUsage(runID, path); err != nil {
 		return false, err
 	}
-	if time.Since(mtime) > staleAfter {
-		_, err = g.St.DB.Exec(`UPDATE runs SET status = 'done', ended_at = COALESCE(ended_at, ?)
-			WHERE id = ? AND status = 'running' AND source = 'watcher'`, mtime.UTC().Format(time.RFC3339), runID)
-	}
-	return true, err
+	return true, nil
 }
 
 // WatchOnce performs one watcher sweep using the persisted checkpoint.

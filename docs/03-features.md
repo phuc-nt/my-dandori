@@ -98,6 +98,7 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 | L6 | **Trend / trust index** — xu hướng theo tuần, điểm tổng hợp 0–100 + autonomy band | "Agent đang lên hay tụt — có nên giao task khó hơn?" | cần tín hiệu để phân việc | **v3 ✅** |
 | L7 | **Agent assignment** — gợi ý agent cho task theo capability/history/load, PO confirm | "Task này giao agent nào hợp nhất?" | phân việc còn thủ công | **v7 ✅** |
 | L8 | **Knowledge capture** — đóng gói pattern/prompt/context tốt thành tri thức tái dùng | "Senior nghỉ, tri thức ở lại" | tri thức đi theo người nghỉ | **v3 ✅** |
+| L9 | **Insights — hiệu suất chi phí** (`/insights`): model efficiency (cost/done, cache-hit), cost-per-outcome theo project/agent — descriptive stats thuần, mẫu n<3 gắn nhãn "chưa đủ mẫu" | "Model nào đáng tiền, project nào tốn/kết quả — không phải điểm agent" | phân biệt chi phí vs điểm | **v9 ✅** |
 
 ---
 

@@ -74,3 +74,37 @@ func gitOut(dir string, args ...string) (string, error) {
 	out, err := cmd.Output()
 	return string(out), err
 }
+
+// GitBranch returns the current branch name at dir, or "" if not a repo or in
+// detached HEAD. A task-key source: humans name branches feature/SCRUM-42.
+func GitBranch(dir string) string {
+	out, err := gitOut(dir, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return ""
+	}
+	b := strings.TrimSpace(out)
+	if b == "HEAD" { // detached — no branch name
+		return ""
+	}
+	return b
+}
+
+// CommitMessages returns commit subjects+bodies in the range before..after
+// (exclusive of before). Empty range or git error yields nil. Capped so a
+// wide range on a busy repo cannot stall a sweep.
+func CommitMessages(dir, before, after string) []string {
+	if before == "" || after == "" || before == after {
+		return nil
+	}
+	out, err := gitOut(dir, "log", "--max-count=100", "--format=%s%n%b", before+".."+after)
+	if err != nil {
+		return nil
+	}
+	var msgs []string
+	for _, m := range strings.Split(out, "\n") {
+		if m = strings.TrimSpace(m); m != "" {
+			msgs = append(msgs, m)
+		}
+	}
+	return msgs
+}

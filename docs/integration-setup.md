@@ -109,6 +109,25 @@ DANDORI_LIVE=1 DRY_RUN=false ./scripts/e2e_v7_writeback.sh
 
 Script tự compile binary trong chính nó, tạo issue Jira / event Calendar / sheet **mới** (không đụng fixture `SCRUM` cũ), in ra id vừa tạo kèm dòng `MANUAL_CLEANUP:` cho từng thứ cần tự tay xoá (Dandori không tự xoá — an toàn hơn xoá nhầm). Digest tự gửi tới chính `digest_recipients` đã cấu hình (self-digest), không gửi hộ ai khác.
 
+## 3b. Cài hook — bước setup đòn bẩy cao nhất cho CAPTURE
+
+Dandori bắt dữ liệu theo hai đường: **hook** (chính xác) và **watcher** (fallback).
+
+- **Hook** (`dandori init` cài vào `.claude/settings.json`): chạy tại `SessionStart` / `PreToolUse` / `PostToolUse` / `Stop`. Đây là đường DUY NHẤT bắt được:
+  - **guardrail** (chặn tại `PreToolUse` — watcher không thấy tool-call nào),
+  - **git-delta chính xác** (snapshot HEAD tại `SessionStart`, delta tại `Stop`),
+  - **end-time chính xác** (timestamp `Stop`).
+- **Watcher** (`dandori watch`, hoặc worker trong `dandori serve`): quét transcript sau khi session xong. Bắt được cost/token/model/status/steering, **suy** end-time từ timestamp transcript và git-delta một phần (chỉ từ lần-thấy-đầu → miss thay đổi trước đó). **Không** thấy guardrail/tool-call.
+
+**Cài hook cho một project:**
+
+```bash
+cd /path/to/project
+dandori init            # merge hook entries vào .claude/settings.json (idempotent)
+```
+
+Không cài hook → guardrail không enforce, git-delta = 0, end-time kém chính xác (rơi về watcher). Nếu bảng density thấy `head_before` NULL và 0 guardrail event, gần như chắc chắn là **chưa cài hook** — không phải bug.
+
 ## 4. An toàn / lưu ý
 
 - **`.env` gitignored** — không commit value thật. `.gitignore` đã set (`.env`, `.env.*`).

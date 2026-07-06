@@ -20,7 +20,7 @@ var pageNames = []string{
 	"standup", "dash_org", "dash_project", "dash_agent",
 	"runs", "run_detail", "run_compare", "reviews", "budgets", "provenance", "rules", "spikes", "playbooks",
 	"chat", "exec_home", "contexts", "launch", "gate_thresholds", "wallboard",
-	"settings_integrations", "welcome", "risk",
+	"settings_integrations", "welcome", "risk", "insights",
 }
 
 type renderer struct {
@@ -57,8 +57,9 @@ var tmplFuncs = template.FuncMap{
 		}
 		return *p
 	},
-	"usd":   func(v float64) string { return fmt.Sprintf("$%.2f", v) },
-	"pct":   func(v float64) string { return fmt.Sprintf("%.0f%%", v) },
+	"usd":    func(v float64) string { return fmt.Sprintf("$%.2f", v) },
+	"pct":    func(v float64) string { return fmt.Sprintf("%.0f%%", v) },
+	"mul100": func(v float64) float64 { return v * 100 },
 	"score": func(v float64) string { return fmt.Sprintf("%.0f", v) },
 	"short": func(s string) string {
 		if len(s) > 12 {

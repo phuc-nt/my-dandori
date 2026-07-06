@@ -3,6 +3,7 @@ package capture
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -58,7 +59,61 @@ func TestParseTranscriptIdempotent(t *testing.T) {
 	path := writeFixture(t)
 	u1, _ := ParseTranscript(path)
 	u2, _ := ParseTranscript(path)
-	if u1 != u2 {
+	if !reflect.DeepEqual(u1, u2) {
 		t.Errorf("reparse must be deterministic: %+v vs %+v", u1, u2)
+	}
+}
+
+// tsFixture carries per-line timestamps (real transcripts always do) plus a
+// gitBranch — the phase-1 end-time and phase-2 branch sources.
+const tsFixture = `{"type":"user","cwd":"/work/proj","gitBranch":"feature/SCRUM-42","timestamp":"2026-07-06T10:00:00.000Z","message":{"role":"user","content":"start"}}
+{"type":"assistant","timestamp":"2026-07-06T10:00:05.000Z","message":{"id":"m1","model":"claude-sonnet-5","usage":{"input_tokens":10,"output_tokens":5}}}
+{"type":"user","timestamp":"2026-07-06T10:02:00.000Z","message":{"role":"user","content":[{"type":"text","text":"steer"}]}}
+{"type":"assistant","timestamp":"2026-07-06T10:03:30.500Z","message":{"id":"m2","model":"claude-sonnet-5","usage":{"input_tokens":1,"output_tokens":1}}}
+`
+
+func TestParseTranscriptTimestamps(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ts.jsonl")
+	if err := os.WriteFile(path, []byte(tsFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u, err := ParseTranscript(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := u.FirstTS.Format("15:04:05"); got != "10:00:00" {
+		t.Errorf("FirstTS = %s, want 10:00:00", got)
+	}
+	if got := u.LastTS.Format("15:04:05"); got != "10:03:30" {
+		t.Errorf("LastTS = %s, want 10:03:30", got)
+	}
+	if !u.LastTS.After(u.FirstTS) {
+		t.Error("LastTS must be after FirstTS")
+	}
+	if u.GitBranch != "feature/SCRUM-42" {
+		t.Errorf("GitBranch = %q", u.GitBranch)
+	}
+}
+
+func TestParseTranscriptNoTimestamps(t *testing.T) {
+	// The original fixture has no timestamp fields — bounds must stay zero
+	// so reconcile treats end-time as unknown rather than fabricating it.
+	u, err := ParseTranscript(writeFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !u.FirstTS.IsZero() || !u.LastTS.IsZero() {
+		t.Errorf("missing timestamps must yield zero bounds: %v / %v", u.FirstTS, u.LastTS)
+	}
+}
+
+func TestParseTSGarbage(t *testing.T) {
+	for _, s := range []string{"", "not-a-time", "2026-13-99"} {
+		if _, ok := parseTS(s); ok {
+			t.Errorf("parseTS(%q) should fail", s)
+		}
+	}
+	if _, ok := parseTS("2026-07-06T10:00:00Z"); !ok {
+		t.Error("parseTS should accept RFC3339")
 	}
 }

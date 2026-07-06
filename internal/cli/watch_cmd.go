@@ -12,6 +12,8 @@ import (
 	"github.com/phuc-nt/dandori/internal/store"
 )
 
+var watchFull bool
+
 var watchCmd = &cobra.Command{
 	Use:   "watch",
 	Short: "One-shot transcript sweep: capture sessions that bypassed hooks",
@@ -22,7 +24,16 @@ var watchCmd = &cobra.Command{
 		}
 		defer st.Close()
 		ing := &capture.Ingestor{Cfg: cfg, St: st}
-		n, err := ing.WatchOnce(cfg.ProjectsDir)
+		var n int
+		if watchFull {
+			// Ignore the checkpoint and re-scan every transcript still on
+			// disk. Reconcile is SET-semantic, so this backfills derived
+			// fields (durations, task keys, steering text) onto existing
+			// runs without duplicating them.
+			n, err = ing.ScanProjects(cfg.ProjectsDir, time.Time{})
+		} else {
+			n, err = ing.WatchOnce(cfg.ProjectsDir)
+		}
 		if err != nil {
 			return err
 		}
@@ -53,6 +64,8 @@ func watcherWorker(ctx context.Context, cfg *config.Config, st *store.Store) {
 }
 
 func init() {
+	watchCmd.Flags().BoolVar(&watchFull, "full", false,
+		"ignore the checkpoint and re-scan all transcripts (backfill derived fields)")
 	rootCmd.AddCommand(watchCmd)
 	registerWorker(watcherWorker)
 }

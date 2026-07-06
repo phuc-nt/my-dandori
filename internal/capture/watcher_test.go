@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -41,6 +42,70 @@ func TestWatcherCreatesAndReconciles(t *testing.T) {
 	g.St.DB.QueryRow(`SELECT count(*) FROM runs`).Scan(&count)
 	if count != 1 {
 		t.Errorf("runs duplicated: %d", count)
+	}
+}
+
+func TestWatcherSetsTimesFromTranscript(t *testing.T) {
+	g := testIngestor(t)
+	projects := t.TempDir()
+	dir := filepath.Join(projects, "-work-proj")
+	os.MkdirAll(dir, 0o755)
+	path := filepath.Join(dir, "timed-1.jsonl")
+	os.WriteFile(path, []byte(tsFixture), 0o644)
+	// Make the file stale so the run gets closed on this sweep.
+	old := time.Now().Add(-2 * time.Hour)
+	os.Chtimes(path, old, old)
+
+	if _, err := g.ScanProjects(projects, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	var started, ended, status string
+	err := g.St.DB.QueryRow(`SELECT started_at, COALESCE(ended_at,''), status
+		FROM runs WHERE session_id='timed-1'`).Scan(&started, &ended, &status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != "done" {
+		t.Errorf("stale run should be done, got %s", status)
+	}
+	// started_at = first transcript ts, ended_at = last — never the mtime,
+	// and ended_at strictly after started_at (no negative duration).
+	if started != "2026-07-06T10:00:00Z" {
+		t.Errorf("started_at = %s, want transcript first ts", started)
+	}
+	if ended != "2026-07-06T10:03:30Z" {
+		t.Errorf("ended_at = %s, want transcript last ts", ended)
+	}
+	if ended <= started {
+		t.Errorf("duration must be positive: %s .. %s", started, ended)
+	}
+}
+
+func TestWatcherNoTimestampsLeavesEndedNull(t *testing.T) {
+	g := testIngestor(t)
+	projects := t.TempDir()
+	dir := filepath.Join(projects, "-work-proj")
+	os.MkdirAll(dir, 0o755)
+	path := filepath.Join(dir, "notime-1.jsonl")
+	// fixtureTranscript carries no timestamps.
+	os.WriteFile(path, []byte(fixtureTranscript), 0o644)
+	old := time.Now().Add(-2 * time.Hour)
+	os.Chtimes(path, old, old)
+
+	if _, err := g.ScanProjects(projects, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	var ended sql.NullString
+	var status string
+	err := g.St.DB.QueryRow(`SELECT ended_at, status FROM runs WHERE session_id='notime-1'`).Scan(&ended, &status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != "done" {
+		t.Errorf("stale run should still close: %s", status)
+	}
+	if ended.Valid {
+		t.Errorf("ended_at must stay NULL when no timestamp (got %q) — never fabricate the mtime", ended.String)
 	}
 }
 

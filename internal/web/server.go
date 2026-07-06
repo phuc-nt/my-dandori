@@ -106,6 +106,7 @@ func (s *Server) routes() {
 	s.mux.Get("/exec", s.handleExecHome)
 	s.mux.Post("/exec/approve/{id}", s.handleExecApprove)
 	s.mux.Post("/exec/insight/{id}/dismiss", s.handleExecDismiss)
+	s.mux.Get("/insights", s.handleInsights)
 	s.mux.Get("/dash/org", s.handleDashOrg)
 	s.mux.Get("/dash/project/{project}", s.handleDashProject)
 	s.mux.Get("/dash/agent/{agent}", s.handleDashAgent)

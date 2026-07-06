@@ -44,6 +44,50 @@ func FindTaskKey(text string) string {
 	return taskKeyRe.FindString(text)
 }
 
+// TaskKeySource names where a linked key came from, stored as provenance so a
+// reader can tell a branch-named link (high trust) from a transcript-scanned
+// one (lower trust).
+type TaskKeySource string
+
+const (
+	TaskKeyFromBranch     TaskKeySource = "branch"
+	TaskKeyFromCommit     TaskKeySource = "commit"
+	TaskKeyFromTranscript TaskKeySource = "transcript"
+)
+
+// FindTaskKeyChain resolves a run's task key by trying the most intentional
+// signal first: the branch name a human chose, then commit trailers in the
+// run's range, then any key mentioned in the transcript. Each candidate must
+// pass `validate` (does it name a work item we actually track?) — an
+// unvalidated match is dropped rather than guessed, because a wrong run↔task
+// link is worse than an absent one. Returns ("", "") when nothing validates.
+func FindTaskKeyChain(branch string, commitMsgs, transcriptTexts []string, validate func(string) bool) (key string, source TaskKeySource) {
+	if k := firstValidKey([]string{branch}, validate); k != "" {
+		return k, TaskKeyFromBranch
+	}
+	if k := firstValidKey(commitMsgs, validate); k != "" {
+		return k, TaskKeyFromCommit
+	}
+	if k := firstValidKey(transcriptTexts, validate); k != "" {
+		return k, TaskKeyFromTranscript
+	}
+	return "", ""
+}
+
+// firstValidKey returns the first issue key found across texts that passes
+// validate. Order within a source is document order (branch has one string;
+// commits/transcript are chronological).
+func firstValidKey(texts []string, validate func(string) bool) string {
+	for _, t := range texts {
+		for _, k := range taskKeyRe.FindAllString(t, -1) {
+			if validate == nil || validate(k) {
+				return k
+			}
+		}
+	}
+	return ""
+}
+
 // AgentID turns an agent name into its stable id (exported for the ingest
 // server, which receives names from remote clients and must map them the
 // same way local capture does).

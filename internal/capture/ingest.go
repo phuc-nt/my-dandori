@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/phuc-nt/dandori/internal/config"
@@ -65,11 +66,23 @@ func (g *Ingestor) SessionStart(in HookInput) error {
 	if err != nil {
 		return err
 	}
-	if gs := SnapshotGit(in.CWD); gs.IsRepo {
+	g.snapshotStart(runID, in.CWD)
+	return nil
+}
+
+// snapshotStart records the git before-state (HEAD + dirty totals) for a run,
+// once. Shared by the SessionStart hook and the watcher's first sighting of a
+// session so both paths can later compute a code delta. Fail-open: non-repo
+// dirs and git errors are ignored, and head_before is only set while still
+// NULL (idempotent across repeated sweeps).
+func (g *Ingestor) snapshotStart(runID, cwd string) {
+	if cwd == "" {
+		return
+	}
+	if gs := SnapshotGit(cwd); gs.IsRepo {
 		_, _ = g.St.DB.Exec(`UPDATE runs SET head_before = ? WHERE id = ? AND head_before IS NULL`, gs.Head, runID)
 		_ = g.St.SetSetting("gitdirty:"+runID, fmt.Sprintf("%d,%d", gs.Added, gs.Deleted))
 	}
-	return nil
 }
 
 // PreTool records a tool_use event and returns run and event ids for the
@@ -165,27 +178,130 @@ func (g *Ingestor) ReconcileUsage(runID, transcriptPath string) error {
 		return err // caller decides; hook command logs and exits 0
 	}
 	cost := g.Cfg.Cost(u.Model, u.Input, u.Output, u.CacheRead, u.CacheWrite)
-	taskKey := FindTaskKey(u.FirstUser)
 	_, err = g.St.DB.Exec(`UPDATE runs SET model = COALESCE(NULLIF(?, ''), model),
 		input_tokens = ?, output_tokens = ?, cache_read_tokens = ?, cache_write_tokens = ?,
-		cost_usd = ?, task_key = COALESCE(NULLIF(task_key, ''), NULLIF(?, ''), task_key)
+		cost_usd = ?
 		WHERE id = ?`,
-		u.Model, u.Input, u.Output, u.CacheRead, u.CacheWrite, cost, taskKey, runID)
+		u.Model, u.Input, u.Output, u.CacheRead, u.CacheWrite, cost, runID)
 	if err != nil {
 		return err
 	}
-	if err := g.recordUserMsgs(runID, u.MidRunMsgs); err != nil {
+	if err := g.reconcileTaskKey(runID, u); err != nil {
+		return err
+	}
+	if err := g.reconcileWatcherTimes(runID, u); err != nil {
+		return err
+	}
+	if err := g.recordUserMsgs(runID, u); err != nil {
 		return err
 	}
 	w, spec := PromptProxy(u.FirstUser)
 	return g.recordCountEvent(runID, "prompt_proxy", PromptProxyPayload(w, spec))
 }
 
-// recordUserMsgs keeps a single user_msg-count event per run up to date.
-// The count is MID-RUN steering messages only (autonomy metric input;
-// SET semantics like usage).
-func (g *Ingestor) recordUserMsgs(runID string, count int) error {
-	return g.recordCountEvent(runID, "user_msg", strconv.Itoa(count))
+// reconcileTaskKey links a run to a work item using the branch→commit→
+// transcript chain, but only when the run has no key yet (a manual wrap/launch
+// attribution always wins) and the candidate validates against a tracked work
+// item. Records a task_key_source event so the link's provenance is visible.
+func (g *Ingestor) reconcileTaskKey(runID string, u Usage) error {
+	var existing, cwd, headBefore, headAfter sql.NullString
+	err := g.St.DB.QueryRow(`SELECT task_key, cwd, head_before, head_after FROM runs WHERE id = ?`, runID).
+		Scan(&existing, &cwd, &headBefore, &headAfter)
+	if err != nil {
+		return err
+	}
+	if existing.String != "" {
+		return nil // never override an already-linked run
+	}
+	branch := u.GitBranch
+	if branch == "" && cwd.String != "" {
+		branch = GitBranch(cwd.String)
+	}
+	commits := CommitMessages(cwd.String, headBefore.String, headAfter.String)
+	key, source := FindTaskKeyChain(branch, commits, u.UserTexts, g.validTaskKey)
+	if key == "" {
+		return nil
+	}
+	if _, err := g.St.DB.Exec(`UPDATE runs SET task_key = ? WHERE id = ? AND (task_key IS NULL OR task_key = '')`,
+		key, runID); err != nil {
+		return err
+	}
+	return g.recordCountEvent(runID, "task_key_source", fmt.Sprintf("source=%s key=%s", source, key))
+}
+
+// validTaskKey reports whether key names a work item we actually track —
+// either an exact match, or a prefix match on a synced project (SCRUM-*) so a
+// freshly-created issue not yet synced still links. Unknown prefixes fail,
+// keeping a stray "ABC-1" in a prompt from mislinking a run.
+func (g *Ingestor) validTaskKey(key string) bool {
+	var n int
+	if err := g.St.DB.QueryRow(`SELECT count(*) FROM work_items WHERE key = ?`, key).Scan(&n); err == nil && n > 0 {
+		return true
+	}
+	dash := strings.IndexByte(key, '-')
+	if dash <= 0 {
+		return false
+	}
+	prefix := key[:dash+1]
+	var m int
+	err := g.St.DB.QueryRow(`SELECT count(*) FROM work_items WHERE key LIKE ?`, prefix+"%").Scan(&m)
+	return err == nil && m > 0
+}
+
+// reconcileWatcherTimes derives started_at/ended_at from transcript
+// timestamps for watcher-sourced runs. The watcher observes a session only
+// when it sweeps — long after the session ran — so EnsureRun's ingest-time
+// started_at and the file mtime both misdate the run. The transcript's own
+// first/last line timestamps are the truth.
+//
+// Data-quality gate: only apply when both bounds parsed AND last > first, so
+// a negative or zero duration is structurally impossible. Hook/wrap runs are
+// left untouched — their Stop/FinalizeRun timestamps are authoritative.
+func (g *Ingestor) reconcileWatcherTimes(runID string, u Usage) error {
+	if u.FirstTS.IsZero() || u.LastTS.IsZero() || !u.LastTS.After(u.FirstTS) {
+		return nil
+	}
+	_, err := g.St.DB.Exec(`UPDATE runs
+		SET started_at = ?, ended_at = CASE WHEN status = 'running' THEN ended_at ELSE ? END
+		WHERE id = ? AND source = 'watcher'`,
+		u.FirstTS.Format(time.RFC3339), u.LastTS.Format(time.RFC3339), runID)
+	return err
+}
+
+// recordUserMsgs keeps the mid-run steering signal current for a run: a
+// user_msg count event (autonomy metric input, SET like usage) plus one
+// steering_msg text event per mid-run message. Text is retained raw here (v9
+// captures the signal); classifying corrective-vs-not is deferred so the
+// heuristic can be designed against real data, not baked into capture.
+func (g *Ingestor) recordUserMsgs(runID string, u Usage) error {
+	if err := g.recordCountEvent(runID, "user_msg", strconv.Itoa(u.MidRunMsgs)); err != nil {
+		return err
+	}
+	return g.syncSteeringTexts(runID, u.SteeringTexts)
+}
+
+// syncSteeringTexts replaces the run's steering_msg events with the current
+// transcript's mid-run texts. Delete+insert (not append) keeps reparses
+// idempotent — the same reparse never grows the event set. Only rewrites when
+// the count changed, so the common no-op reconcile stays cheap. AddEvent
+// redacts and truncates each payload, so secrets typed mid-run never land raw.
+func (g *Ingestor) syncSteeringTexts(runID string, texts []string) error {
+	var have int
+	if err := g.St.DB.QueryRow(`SELECT count(*) FROM events WHERE run_id = ? AND kind = 'steering_msg'`, runID).Scan(&have); err != nil {
+		return err
+	}
+	if have == len(texts) {
+		return nil // unchanged — avoid churn on every throttled reconcile
+	}
+	if _, err := g.St.DB.Exec(`DELETE FROM events WHERE run_id = ? AND kind = 'steering_msg'`, runID); err != nil {
+		return err
+	}
+	for _, t := range texts {
+		if _, err := g.AddEvent(runID, "steering_msg", "", sql.NullInt64{}, truncate([]byte(t), payloadCap)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // recordCountEvent keeps a single numeric analytics event of a kind per run

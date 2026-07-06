@@ -1,0 +1,142 @@
+{{define "content"}}
+<div class="mb-4">
+  <h1 class="text-2xl font-bold">📊 Insights</h1>
+  <p class="text-gray-500 text-sm">
+    Hiệu suất chi phí trên dữ liệu đang đầy đủ (cost · model · token · cache · status).
+    Đây là <strong>hiệu suất model & chi phí</strong>, không phải điểm agent.
+    Ô gắn nhãn <span class="text-amber-700">“n=X”</span> nghĩa là dưới {{.MinSample}} run — chưa đủ mẫu để so.
+  </p>
+</div>
+
+{{/* Day-window filter — plain links, no build step */}}
+<div class="mb-4 text-sm">
+  <span class="text-gray-500">Khoảng:</span>
+  <a class="px-2 py-1 rounded {{if eq .Window 7}}bg-blue-600 text-white{{else}}bg-gray-100{{end}}" href="/insights?days=7">7 ngày</a>
+  <a class="px-2 py-1 rounded {{if eq .Window 30}}bg-blue-600 text-white{{else}}bg-gray-100{{end}}" href="/insights?days=30">30 ngày</a>
+  <a class="px-2 py-1 rounded {{if eq .Window 0}}bg-blue-600 text-white{{else}}bg-gray-100{{end}}" href="/insights?days=0">Tất cả</a>
+</div>
+
+<div class="space-y-8">
+
+  {{/* ── Phase 6: model efficiency ── */}}
+  <section>
+    <h2 class="font-semibold mb-2">Hiệu suất theo model</h2>
+    {{if .Models}}
+    <div class="bg-white border rounded-lg overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-100 text-left"><tr>
+          <th class="p-2">Model</th>
+          <th class="p-2 text-right">Runs</th>
+          <th class="p-2 text-right">Xong</th>
+          <th class="p-2 text-right">Tổng chi phí</th>
+          <th class="p-2 text-right">Chi phí / run xong</th>
+          <th class="p-2 text-right">Cache-hit</th>
+        </tr></thead>
+        <tbody>
+        {{range .Models}}
+          <tr class="border-t">
+            <td class="p-2 font-mono text-xs">
+              {{.Model}}
+              {{if .Insufficient}}<span class="ml-1 text-amber-700 text-[11px]">n={{.Runs}} — chưa đủ mẫu</span>{{end}}
+            </td>
+            <td class="p-2 text-right">{{.Runs}}</td>
+            <td class="p-2 text-right">{{.DoneRuns}}</td>
+            <td class="p-2 text-right">{{usd .TotalCost}}</td>
+            <td class="p-2 text-right">{{if .DoneRuns}}{{usd .CostPerDone}}{{else}}—{{end}}</td>
+            <td class="p-2 text-right">{{pct (mul100 .CacheHitRatio)}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+      <div class="text-sm text-gray-500">Chưa có run nào trong khoảng này.</div>
+    {{end}}
+  </section>
+
+  {{/* ── Phase 6: cache utilization ── */}}
+  <section>
+    <h2 class="font-semibold mb-2">Tận dụng cache theo phiên</h2>
+    <p class="text-gray-500 text-xs mb-2">Phiên nào tái dùng context tốt (cache-hit cao) vs trả full giá (thấp).</p>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div>
+        <div class="text-xs text-green-700 font-semibold mb-1">Cache-hit cao nhất</div>
+        {{template "cache_rows" .BestCache}}
+      </div>
+      <div>
+        <div class="text-xs text-red-700 font-semibold mb-1">Cache-hit thấp nhất</div>
+        {{template "cache_rows" .WorstCache}}
+      </div>
+    </div>
+  </section>
+
+  {{/* ── Phase 7: cost-per-outcome ── */}}
+  <section>
+    <h2 class="font-semibold mb-2">Chi phí trên kết quả</h2>
+    <p class="text-gray-500 text-xs mb-2">
+      Chi phí thô / run hoàn thành — <strong>không phải điểm</strong>. Run đang chạy không tính vào mẫu số.
+    </p>
+    <div class="mb-2 text-sm" hx-target="#outcome-body" hx-swap="innerHTML">
+      <span class="text-gray-500">Nhóm theo:</span>
+      <a class="px-2 py-1 rounded cursor-pointer {{if eq .Group "project"}}bg-blue-600 text-white{{else}}bg-gray-100{{end}}"
+         hx-get="/insights?fragment=outcome_body&days={{.Window}}&group=project">Project</a>
+      <a class="px-2 py-1 rounded cursor-pointer {{if eq .Group "agent"}}bg-blue-600 text-white{{else}}bg-gray-100{{end}}"
+         hx-get="/insights?fragment=outcome_body&days={{.Window}}&group=agent">Agent</a>
+    </div>
+    <div id="outcome-body">
+      {{template "outcome_body" .}}
+    </div>
+  </section>
+
+</div>
+{{end}}
+
+{{define "cache_rows"}}
+<div class="bg-white border rounded-lg overflow-x-auto">
+  <table class="w-full text-sm">
+    <tbody>
+    {{range .}}
+      <tr class="border-t">
+        <td class="p-2"><a class="text-blue-600 hover:underline font-mono text-xs" href="/runs/{{.RunID}}">{{short .RunID}}</a></td>
+        <td class="p-2 text-xs text-gray-500">{{.AgentID}}</td>
+        <td class="p-2 text-right">{{pct (mul100 .CacheHitRatio)}}</td>
+      </tr>
+    {{else}}
+      <tr><td class="p-2 text-gray-500 text-sm">Chưa có dữ liệu.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+{{define "outcome_body"}}
+{{if .Outcomes}}
+<div class="bg-white border rounded-lg overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-100 text-left"><tr>
+      <th class="p-2">{{if eq .Group "agent"}}Agent{{else}}Project{{end}}</th>
+      <th class="p-2 text-right">Runs</th>
+      <th class="p-2 text-right">Xong / Fail / Kill / Chạy</th>
+      <th class="p-2 text-right">Tổng chi phí</th>
+      <th class="p-2 text-right">Chi phí / run xong</th>
+    </tr></thead>
+    <tbody>
+    {{range .Outcomes}}
+      <tr class="border-t">
+        <td class="p-2">
+          {{.Group}}
+          {{if .Insufficient}}<span class="ml-1 text-amber-700 text-[11px]">n={{.Runs}}</span>{{end}}
+        </td>
+        <td class="p-2 text-right">{{.Runs}}</td>
+        <td class="p-2 text-right text-xs">{{.Done}} / {{.Failed}} / {{.Killed}} / {{.Running}}</td>
+        <td class="p-2 text-right">{{usd .TotalCost}}</td>
+        <td class="p-2 text-right">{{.FormatCostPerDone}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<div class="text-sm text-gray-500">Chưa có run nào trong khoảng này.</div>
+{{end}}
+{{end}}

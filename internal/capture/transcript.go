@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
+	"time"
 )
 
 // Usage is the aggregate token usage of one transcript, deduplicated by
@@ -20,13 +21,38 @@ type Usage struct {
 	// opening prompt(s) before the first assistant turn are not counted.
 	MidRunMsgs int
 	CWD        string // cwd recorded in transcript lines, if any
+	// FirstTS/LastTS bound the session in wall-clock time, taken from the
+	// per-line `timestamp` field. Watcher runs use these for started_at/
+	// ended_at (the mtime it observes is when it swept, not when the session
+	// ran). Zero when no line carried a parseable timestamp.
+	FirstTS time.Time
+	LastTS  time.Time
+	// GitBranch is the branch recorded in transcript lines, if any — a
+	// task-key source that does not require shelling out to git.
+	GitBranch string
+	// UserTexts are all human user messages in order (opening + mid-run),
+	// used for task-key scanning. Bounded by userTextsCap to keep a very
+	// long session from ballooning memory.
+	UserTexts []string
+	// SteeringTexts are the mid-run human messages only (the same population
+	// MidRunMsgs counts) — the raw autonomy signal. The opening prompt is
+	// excluded; that is intent, not correction. Bounded by steeringTextsCap.
+	SteeringTexts []string
 }
+
+// userTextsCap bounds the total bytes of UserTexts retained per transcript.
+const userTextsCap = 64 * 1024
+
+// steeringTextsCap bounds the total bytes of SteeringTexts retained per run.
+const steeringTextsCap = 32 * 1024
 
 type transcriptLine struct {
 	Type        string `json:"type"`
 	CWD         string `json:"cwd"`
 	IsSidechain bool   `json:"isSidechain"`
 	IsMeta      bool   `json:"isMeta"`
+	Timestamp   string `json:"timestamp"`
+	GitBranch   string `json:"gitBranch"`
 	Message     struct {
 		ID      string          `json:"id"`
 		Role    string          `json:"role"`
@@ -54,6 +80,8 @@ func ParseTranscript(path string) (Usage, error) {
 
 	seen := map[string]bool{}
 	assistantStarted := false
+	userTextsBytes := 0
+	steeringBytes := 0
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 1024*1024), 16*1024*1024)
 	for sc.Scan() {
@@ -63,6 +91,17 @@ func ParseTranscript(path string) (Usage, error) {
 		}
 		if u.CWD == "" && line.CWD != "" {
 			u.CWD = line.CWD
+		}
+		if u.GitBranch == "" && line.GitBranch != "" {
+			u.GitBranch = line.GitBranch
+		}
+		if ts, ok := parseTS(line.Timestamp); ok {
+			if u.FirstTS.IsZero() || ts.Before(u.FirstTS) {
+				u.FirstTS = ts
+			}
+			if ts.After(u.LastTS) {
+				u.LastTS = ts
+			}
 		}
 		switch line.Type {
 		case "assistant":
@@ -91,12 +130,34 @@ func ParseTranscript(path string) (Usage, error) {
 			if u.FirstUser == "" {
 				u.FirstUser = text
 			}
+			if userTextsBytes < userTextsCap {
+				u.UserTexts = append(u.UserTexts, text)
+				userTextsBytes += len(text)
+			}
 			if assistantStarted {
 				u.MidRunMsgs++
+				if steeringBytes < steeringTextsCap {
+					u.SteeringTexts = append(u.SteeringTexts, text)
+					steeringBytes += len(text)
+				}
 			}
 		}
 	}
 	return u, sc.Err()
+}
+
+// parseTS parses a transcript line timestamp (RFC3339, may carry millis).
+// Returns false for empty or unparseable values so callers can skip them
+// rather than record a zero time.
+func parseTS(s string) (time.Time, bool) {
+	if s == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t.UTC(), true
 }
 
 // userText extracts plain text from a user message content (string or blocks).
