@@ -16,6 +16,16 @@
 
 > **Quy tắc:** token Atlassian/Slack/OpenRouter sống ở `.env`. GitHub + Google auth do CLI (`gh`/`gws`) tự quản ở keyring máy — chỉ cần 2 CLI đó có trong PATH.
 
+## 1b. Đường nhanh: nhập credential qua UI (v8)
+
+Từ v8, đường **chính** để nối integration là trang **`/settings/integrations`** trong console — không cần sửa `.env` bằng tay:
+
+1. `dandori serve` → mở `http://127.0.0.1:4777/settings/integrations` (hoặc theo trình hướng dẫn `/welcome`).
+2. Dán token vào card tương ứng (Atlassian / Slack / OpenRouter), bấm **Kiểm tra** để thử kết nối read-only, rồi **Lưu**.
+3. **Khởi động lại `dandori serve`** để tác vụ nền (cảnh báo Slack, đồng bộ) nhận cấu hình mới.
+
+UI ghi thẳng vào `./.env` (atomic, mode 0600), chỉ ghi đúng các key của integration — không bao giờ ghi được `DRY_RUN`/`AGENT_WRITE_DISABLED`/`SLACK_APPROVERS`. GitHub/Google vẫn đăng nhập bằng CLI (`gh auth login` / `gws auth`), UI chỉ có nút **Kiểm tra**. Đường sửa `.env` thủ công bên dưới vẫn dùng được (đường phụ, cho automation/CI).
+
 ## 2. Chi tiết từng integration
 
 ### Atlassian (Jira + Confluence)
