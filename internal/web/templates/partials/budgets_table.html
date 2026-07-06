@@ -22,12 +22,16 @@
           <span class="text-xs text-gray-500">{{pct .Pct}}</span>
         </td>
         <td class="p-2">
+          {{if $.IsAdmin}}
           <form method="post" action="/budgets" class="flex gap-1">
             <input type="hidden" name="scope_type" value="{{.ScopeType}}">
             <input type="hidden" name="scope_id" value="{{.ScopeID}}">
             <input name="limit_usd" value="{{.LimitUSD}}" class="border rounded px-2 py-1 w-24 text-sm">
             <button class="bg-slate-600 text-white px-2 py-1 rounded text-sm">Save</button>
           </form>
+          {{else}}
+          <span class="text-gray-400 text-xs">—</span>
+          {{end}}
         </td>
       </tr>
       {{end}}

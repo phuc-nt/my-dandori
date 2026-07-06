@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -110,5 +111,80 @@ func TestRetryRejectsNonConsoleOrigin(t *testing.T) {
 	rec := postForm(t, s, "/runs/hookrun/retry", url.Values{"agent": {"claude"}, "prompt": {"x"}, "cwd": {""}})
 	if rec.Code == http.StatusNoContent {
 		t.Error("retry of a non-console (hook) run should be rejected")
+	}
+}
+
+// P2 smoke test: approve + kill + launch, under a REAL logged-in session (not
+// local-trust), must each attribute their audit entry to the real operator
+// principal — never a stale hardcoded "@console"/Cfg.UserName string. This
+// covers more than approve alone (the spec calls out kill/launch explicitly
+// since execActor/launchActor were separate hardcoded helpers pre-P2).
+func TestApproveKillLaunchAuditRealPrincipal(t *testing.T) {
+	s := testServerWithListen(t, "127.0.0.1:4777")
+	wireLauncher(t, s)
+	operator := mustCreateAccount(t, s, "priya", "admin")
+	sessID, err := s.sessions.Create(operator)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	authed := func(method, path string, form url.Values) *httptest.ResponseRecorder {
+		var body *strings.Reader
+		if form != nil {
+			body = strings.NewReader(form.Encode())
+		} else {
+			body = strings.NewReader("")
+		}
+		req := httptest.NewRequest(method, path, body)
+		req.Host = s.Cfg.Listen
+		if form != nil {
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+		req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: sessID})
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		return rec
+	}
+
+	// Approve: seed a pending approval, decide it, check decided_by.
+	s.Store.DB.Exec(`INSERT INTO agents(id,name,created_at) VALUES('bot','bot','now') ON CONFLICT DO NOTHING`)
+	s.Store.DB.Exec(`INSERT INTO runs(id,session_id,agent_id,source,status,started_at) VALUES('r1','r1','bot','console','running','now')`)
+	s.Store.DB.Exec(`INSERT INTO approvals(run_id, action, reason, requested_at) VALUES('r1', 'git push', 'gate', 'now')`)
+	rec := authed("POST", "/reviews/1/decide", url.Values{"decision": {"approve"}})
+	if rec.Code != http.StatusOK && rec.Code != http.StatusNoContent && rec.Code != http.StatusSeeOther {
+		t.Fatalf("approve decide: code %d body=%s", rec.Code, rec.Body)
+	}
+	var decidedBy string
+	s.Store.DB.QueryRow(`SELECT COALESCE(decided_by,'') FROM approvals WHERE id=1`).Scan(&decidedBy)
+	if decidedBy != operator {
+		t.Errorf("approve decided_by = %q, want real principal %q (not @console)", decidedBy, operator)
+	}
+
+	// Kill: the running console run above.
+	rec = authed("POST", "/runs/r1/kill", url.Values{"reason": {"smoke test"}})
+	if rec.Code != http.StatusOK && rec.Code != http.StatusNoContent && rec.Code != http.StatusSeeOther {
+		t.Fatalf("kill: code %d body=%s", rec.Code, rec.Body)
+	}
+	var killAudits int
+	s.Store.DB.QueryRow(`SELECT count(*) FROM audit_log WHERE action='kill_run' AND actor = ?`, operator).Scan(&killAudits)
+	if killAudits == 0 {
+		t.Error("kill_run audit entry missing real principal")
+	}
+
+	// Launch: a fresh console run.
+	rec = authed("POST", "/launch", url.Values{"agent": {"claude"}, "prompt": {"xin chào"}, "cwd": {""}})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("launch: code %d body=%s", rec.Code, rec.Body)
+	}
+	var launchAudits int
+	s.Store.DB.QueryRow(`SELECT count(*) FROM audit_log WHERE action='run_launched' AND actor = ?`, operator).Scan(&launchAudits)
+	if launchAudits == 0 {
+		t.Error("run_launched audit entry missing real principal")
+	}
+
+	// Never a stale hardcoded actor for any of the three audited actions above.
+	var staleAudits int
+	s.Store.DB.QueryRow(`SELECT count(*) FROM audit_log WHERE action IN ('approval_approved','kill_run','run_launched') AND actor LIKE '%@console'`).Scan(&staleAudits)
+	if staleAudits != 0 {
+		t.Errorf("found %d audit entries still attributed to @console under a real session", staleAudits)
 	}
 }

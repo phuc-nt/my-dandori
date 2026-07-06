@@ -16,7 +16,7 @@ func (s *Server) handleBudgets(w http.ResponseWriter, r *http.Request) {
 	projects := s.listProjects()
 	data := map[string]any{"Page": "budgets", "Budgets": budgets, "Agents": agents, "Projects": projects}
 	if isHTMX(r) {
-		s.renderFragment(w, "budgets", "budgets_table", data)
+		s.renderFragment(w, r, "budgets", "budgets_table", data)
 		return
 	}
 	s.render(w, r, "budgets", data)
@@ -48,7 +48,7 @@ func (s *Server) handleBudgetSet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.audit("set_budget", scopeType+":"+scopeID, r.FormValue("limit_usd"))
+	s.audit(r, "set_budget", scopeType+":"+scopeID, r.FormValue("limit_usd"))
 	redirectBack(w, r, "/budgets")
 }
 

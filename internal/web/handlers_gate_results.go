@@ -45,25 +45,29 @@ func (s *Server) queryGateResults(runID string) ([]GateResultRow, error) {
 // overridden rows (UB4).
 func (s *Server) handleRunGateResults(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	s.renderRunGateResults(w, id)
+	s.renderRunGateResults(w, r, id)
 }
 
-func (s *Server) renderRunGateResults(w http.ResponseWriter, runID string) {
+func (s *Server) renderRunGateResults(w http.ResponseWriter, r *http.Request, runID string) {
 	results, err := s.queryGateResults(runID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.renderFragment(w, "run_detail", "run_gate_results", map[string]any{
+	s.renderFragment(w, r, "run_detail", "run_gate_results", map[string]any{
 		"RunID": runID, "GateResults": results,
 	})
 }
 
 // auditAppender adapts Server.audit (which logs failures rather than
-// returning them) to learn.Auditor's Append signature.
-type auditAppender struct{ s *Server }
+// returning them) to learn.Auditor's Append signature. Carries the request
+// so the audit entry attributes to the real logged-in principal (P2).
+type auditAppender struct {
+	s *Server
+	r *http.Request
+}
 
 func (a *auditAppender) Append(action, subject, detail string) (int64, error) {
-	a.s.audit(action, subject, detail)
+	a.s.audit(a.r, action, subject, detail)
 	return 0, nil
 }

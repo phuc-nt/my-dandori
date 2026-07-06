@@ -34,7 +34,7 @@ func (s *Server) handleRuns(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{"Page": "runs", "Runs": runs, "Q": r.URL.Query(),
 		"PageNum": page, "HasNext": hasNext, "PrevPage": page - 1, "NextPage": page + 1}
 	if isHTMX(r) {
-		s.renderFragment(w, "runs", "runs_tbody", data)
+		s.renderFragment(w, r, "runs", "runs_tbody", data)
 		return
 	}
 	// UG3: saved-views dropdown needs the list for this page plus the
@@ -139,7 +139,7 @@ func (s *Server) handleRunStatusFragment(w http.ResponseWriter, r *http.Request)
 	if runTerminal(status) {
 		w.WriteHeader(286) // stop polling
 	}
-	s.renderFragment(w, "run_detail", "run_status_fragment", map[string]any{
+	s.renderFragment(w, r, "run_detail", "run_status_fragment", map[string]any{
 		"ID": id, "Status": status, "Killable": killable, "Adopted": adopted, "Terminal": runTerminal(status),
 	})
 }
@@ -175,7 +175,7 @@ func (s *Server) handleRunLogTail(w http.ResponseWriter, r *http.Request) {
 	if runTerminal(status) {
 		w.WriteHeader(286)
 	}
-	s.renderFragment(w, "run_detail", "run_log_pane", map[string]any{
+	s.renderFragment(w, r, "run_detail", "run_log_pane", map[string]any{
 		"ID": id, "Lines": lines, "MaxID": maxID, "Terminal": runTerminal(status),
 	})
 }
@@ -200,15 +200,15 @@ func toTraceEvents(events []EventRow) []learn.TraceEvent {
 
 // handleRunKill kills one running session (UA2). For a console-launched run
 // this signals the real process group via the launcher; hook/wrap runs fall
-// back to a status-only mark (blocks the next tool call). Single actor
-// identity: cfg.UserName+"@console".
+// back to a status-only mark (blocks the next tool call). Actor is the real
+// logged-in principal (s.actor), local-trust falls back to UserName@console.
 func (s *Server) handleRunKill(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	reason := r.FormValue("reason")
 	if reason == "" {
 		reason = "killed from console"
 	}
-	actor := s.Cfg.UserName + "@console"
+	actor := s.actor(r)
 	var err error
 	if s.Launcher != nil {
 		_, err = s.Launcher.Kill(id, actor, reason)
@@ -236,7 +236,7 @@ func (s *Server) handleRunTaskKey(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.audit("set_task_key", id, key)
+	s.audit(r, "set_task_key", id, key)
 	redirectBack(w, r, "/runs/"+id)
 }
 
@@ -255,7 +255,7 @@ func (s *Server) handleRunFlag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	flagID, _ := res.LastInsertId()
-	s.audit("flag_run", id, reason)
+	s.audit(r, "flag_run", id, reason)
 	if s.FlagSink != nil {
 		go s.FlagSink(flagID) // integrations: flag → Jira ticket
 	}
@@ -269,17 +269,17 @@ func (s *Server) handleGlobalKill(w http.ResponseWriter, r *http.Request) {
 	if reason == "" {
 		reason = "toggled from console header"
 	}
-	if err := govern.SetGlobalKill(s.Store, on, s.Cfg.UserName, reason); err != nil {
+	if err := govern.SetGlobalKill(s.Store, on, s.actor(r), reason); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 	redirectBack(w, r, "/")
 }
 
-// audit appends a console-actor audit entry; failures are loud in the log —
-// a silent audit gap defeats the point of having one.
-func (s *Server) audit(action, subject, detail string) {
-	a := &govern.Audit{St: s.Store, Actor: s.Cfg.UserName}
+// audit appends a request-attributed audit entry; failures are loud in the
+// log — a silent audit gap defeats the point of having one.
+func (s *Server) audit(r *http.Request, action, subject, detail string) {
+	a := &govern.Audit{St: s.Store, Actor: s.actor(r)}
 	if _, err := a.Append(action, subject, detail); err != nil {
 		log.Printf("AUDIT WRITE FAILED action=%s subject=%s: %v", action, subject, err)
 	}

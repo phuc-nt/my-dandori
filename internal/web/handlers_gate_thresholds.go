@@ -27,7 +27,7 @@ func (s *Server) handleGateThresholds(w http.ResponseWriter, r *http.Request) {
 		"GateMinPassPct": settingOrDefault(s, "gate_min_pass_pct", defaultGateMinPassPct),
 	}
 	if isHTMX(r) {
-		s.renderFragment(w, "gate_thresholds", "gate_thresholds_form", data)
+		s.renderFragment(w, r, "gate_thresholds", "gate_thresholds_form", data)
 		return
 	}
 	s.render(w, r, "gate_thresholds", data)
@@ -56,7 +56,7 @@ func (s *Server) handleGateThresholdsSet(w http.ResponseWriter, r *http.Request)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a := &govern.Audit{St: s.Store, Actor: s.execActor()}
+	a := &govern.Audit{St: s.Store, Actor: s.actor(r)}
 	_, _ = a.Append("gate_thresholds_set", "global", "grade="+grade+" pass_pct="+pctRaw)
 	redirectBack(w, r, "/gate-thresholds")
 }

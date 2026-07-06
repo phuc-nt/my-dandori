@@ -76,6 +76,7 @@
   {{range .View.Inbox}}
   <div class="border rounded-lg p-3 flex items-center gap-3">
     <div class="flex-1 text-sm">{{.Summary}}</div>
+    {{if $.IsAdmin}}
     <form hx-post="{{.ApproveURL}}" hx-target="#exec-inbox" hx-swap="innerHTML">
       <input type="hidden" name="decision" value="approve">
       <button class="bg-green-600 text-white text-sm rounded px-3 py-1">Duyệt</button>
@@ -83,6 +84,9 @@
     <form hx-post="{{.DismissURL}}" hx-target="#exec-inbox" hx-swap="innerHTML">
       <button class="text-gray-500 text-sm hover:underline">Bỏ qua</button>
     </form>
+    {{else}}
+    <span class="text-xs text-gray-400">chỉ admin duyệt được</span>
+    {{end}}
   </div>
   {{end}}
 </div>

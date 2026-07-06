@@ -8,8 +8,9 @@ package web
 func (s *Server) registerPhase02Routes() {
 	s.mux.Get("/runs/{id}/transitions", s.handleRunTransitions)
 	s.mux.Get("/runs/{id}/gate-results", s.handleRunGateResults)
-	s.mux.Post("/runs/{id}/transition-request", s.handleTransitionRequest)
-	s.mux.Post("/runs/{id}/pr-review-request", s.handlePRReviewRequest)
-	s.mux.Post("/runs/{id}/calendar-request", s.handleCalendarRequest)
-	s.mux.Post("/runs/{id}/override-gate", s.handleOverrideGate)
+	// admin: external write against Jira/GitHub/Calendar or a gate override.
+	s.mux.With(s.requireAdmin).Post("/runs/{id}/transition-request", s.handleTransitionRequest)
+	s.mux.With(s.requireAdmin).Post("/runs/{id}/pr-review-request", s.handlePRReviewRequest)
+	s.mux.With(s.requireAdmin).Post("/runs/{id}/calendar-request", s.handleCalendarRequest)
+	s.mux.With(s.requireAdmin).Post("/runs/{id}/override-gate", s.handleOverrideGate)
 }

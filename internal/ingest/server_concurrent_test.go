@@ -56,7 +56,7 @@ func BenchmarkIngestBatch20(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer st.Close()
-	cfg := &config.Config{IngestToken: "secret-token"}
+	cfg := &config.Config{IngestToken: "secret-token", AllowLegacyIngestToken: true}
 	s := NewServer(cfg, st)
 	h := s.Handler()
 	b.ResetTimer()

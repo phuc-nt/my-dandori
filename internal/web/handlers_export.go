@@ -17,13 +17,13 @@ func (s *Server) handleConfluenceReport(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.audit("confluence_report", "org", pageID)
+	s.audit(r, "confluence_report", "org", pageID)
 	redirectBack(w, r, "/dash/org")
 }
 
 // handleComplianceExport streams the compliance bundle for download.
 func (s *Server) handleComplianceExport(w http.ResponseWriter, r *http.Request) {
-	bundle, err := govern.BuildComplianceBundle(s.Store, s.Cfg.UserName)
+	bundle, err := govern.BuildComplianceBundle(s.Store, s.actor(r))
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return

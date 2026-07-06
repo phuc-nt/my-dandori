@@ -60,11 +60,11 @@ func (s *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 	agent := r.FormValue("agent")
 	prompt := r.FormValue("prompt")
 	cwd := s.resolveCwd(r.FormValue("cwd"))
-	runID, err := s.Launcher.Launch(agent, prompt, cwd, s.launchActor(), "")
+	runID, err := s.Launcher.Launch(agent, prompt, cwd, s.actor(r), "")
 	if s.launchError(w, r, err) {
 		return
 	}
-	a := &govern.Audit{St: s.Store, Actor: s.launchActor()}
+	a := &govern.Audit{St: s.Store, Actor: s.actor(r)}
 	_, _ = a.Append("run_launched", runID, "agent="+agent+" cwd="+cwd)
 	w.Header().Set("HX-Redirect", "/runs/"+runID)
 	w.WriteHeader(http.StatusNoContent)
@@ -107,11 +107,11 @@ func (s *Server) handleRetry(w http.ResponseWriter, r *http.Request) {
 	agent := r.FormValue("agent")
 	prompt := r.FormValue("prompt")
 	cwd := s.resolveCwd(r.FormValue("cwd"))
-	runID, err := s.Launcher.Launch(agent, prompt, cwd, s.launchActor(), originalID)
+	runID, err := s.Launcher.Launch(agent, prompt, cwd, s.actor(r), originalID)
 	if s.launchError(w, r, err) {
 		return
 	}
-	a := &govern.Audit{St: s.Store, Actor: s.launchActor()}
+	a := &govern.Audit{St: s.Store, Actor: s.actor(r)}
 	_, _ = a.Append("run_retried", runID, "from="+originalID)
 	w.Header().Set("HX-Redirect", "/runs/"+runID)
 	w.WriteHeader(http.StatusNoContent)
@@ -142,5 +142,3 @@ func (s *Server) resolveCwd(dir string) string {
 	}
 	return s.Cfg.ProjectsDir + string(os.PathSeparator) + dir
 }
-
-func (s *Server) launchActor() string { return s.Cfg.UserName + "@console" }

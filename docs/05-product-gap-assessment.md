@@ -58,10 +58,10 @@ Câu hỏi vision đánh dấu "quan trọng nhất" ([03-features.md:255](03-fe
 
 ### Tier 1 — Blocker (không ship được nếu thiếu)
 
-1. **Không có auth/identity.** Web console single-principal localhost; `execActor()` trả `UserName + "@console"` cứng ([internal/web/handlers_exec.go](../internal/web/handlers_exec.go)); originGuard chỉ bind localhost ([internal/web/server.go:58-79](../internal/web/server.go)). Mọi phê duyệt đều `@console` — audit không biết *ai* quyết. **Mâu thuẫn trực tiếp với lời hứa GOVERN** ("separation of duties", "compliance hỏi 6 tháng sau có câu trả lời").
-2. **Central-mode dùng 1 token chung** ([internal/ingest/server.go:52-83](../internal/ingest/server.go)). `X-Dandori-Principal` là header client tự khai, không verify → bất kỳ máy nào có token đều mạo danh máy khác. Multi-máy thật không an toàn.
-3. **Không RBAC** — ai cũng kill được run của ai, promote context của ai. Trước khi mở "các nút ghi" cho một đội phải có phân quyền.
-4. **Data at rest không mã hoá** — mọi prompt/code lưu SQLite trần. Với org bị quản lý (compliance) là vấn đề.
+1. ✅ **CLOSED bởi v10 (260707).** Web console giờ có login local (username+password, argon2id) — mọi audit entry ghi principal thật (`<username>` hoặc `slack:<id>`), không còn `@console` cứng ngoài fallback local-trust khi chưa từng tạo account nào. Xem [04-implementation-notes.md § v10](04-implementation-notes.md). Lưu ý: v10 chọn **local account**, không phải Google SSO như đề xuất ban đầu bên dưới (SSO vẫn [Sau]) — quyết định đổi hướng vì SSO kéo thêm dep/flow phức tạp hơn mức tối thiểu cần để đóng blocker.
+2. ✅ **CLOSED bởi v10.** Central-mode giờ có **per-operator ingest token** (`dandori token create <username>`, SHA-256 hash lookup) — mỗi máy có token riêng, server tự derive operator từ token, không tin header client-supplied. Token chung cũ (legacy) vẫn được chấp nhận song song trong giai đoạn chuyển đổi (`allow_legacy_ingest_token`, mặc định `true`) nhưng luôn attribute về hằng số `legacy-shared@ingest`, không mạo danh được máy khác qua header. Ngày tắt hẳn legacy chưa chốt (dự kiến v11).
+3. ✅ **CLOSED bởi v10.** 2 role `admin`/`viewer` gate 29/38 route POST ghi (kill/demote/override/launch/budget/...), default-deny cho route mới chưa phân loại. Full granular RBAC (theo resource/scope, không chỉ 2 role toàn cục) vẫn [Sau].
+4. **Data at rest không mã hoá** — mọi prompt/code lưu SQLite trần. Với org bị quản lý (compliance) là vấn đề. **Còn mở** — v10 không đụng tới (ngoài scope: v10 = identity/RBAC, không phải encryption-at-rest).
 
 ### Tier 2 — Quan trọng (ship đội đầu rồi vá)
 
@@ -79,7 +79,7 @@ Từ [03-features.md:255-257](03-features.md):
 |---|---|---|
 | (a) Độ sâu điều khiển runtime | Chặn pre-tool thật (kill/budget/sandbox/gate); **không** cắt được tool đang chạy | Gap trung bình |
 | (b) Quyền ghi lên service | v7 làm xong: jira-transition, pr-review, calendar, sheets, drive-import — đều qua duyệt | ✅ Hoàn thành |
-| (c) RBAC / multi-user | **Chưa có gì** — single-principal localhost, 1 token chung | **Blocker** |
+| (c) RBAC / multi-user | v10 (260707) đóng: login local + principal thật vào audit + per-operator token + 2 role admin/viewer trên 29 route ghi. Full granular RBAC + SSO vẫn [Sau] | ✅ Đóng (tối thiểu) — xem [04](04-implementation-notes.md) |
 
 ## Verdict giao vision
 
@@ -97,11 +97,11 @@ Từ [03-features.md:255-257](03-features.md):
 
 Cái thiếu lớn nhất **không phải feature** — 13 feature vision đã gần đủ. Cái thiếu là **tầng danh tính & phân quyền**. Vision bán "hạ tầng dùng chung của tổ chức" nhưng ở khía cạnh auth code vẫn là "công cụ cá nhân". Gợi ý sẵn trong vision (**Google SSO + Directory** của GWS) là đường đi đúng — và `gws` auth đã chạy thật trong repo, nên là mảnh ghép khả thi nhất.
 
-**Đề xuất v8 — Identity & RBAC:** Google SSO login · principal thật gắn vào mọi audit entry (thay `@console`) · per-operator token cho central-mode · role gate cho các nút ghi (kill/demote/override). Đây là thứ biến Dandori từ "PoC chứng minh vision khả thi" thành "sản phẩm một tổ chức dám giao quyền".
+**Identity & RBAC — ĐÃ SHIP ở v10 (260707)** *(v8 rẽ sang onboarding/executive UX, v9 sang capture-gap trước khi tới lượt identity; metric overhaul lùi thành v11 — xem [04](04-implementation-notes.md))*: local login (không phải Google SSO như đề xuất ban đầu — đổi hướng vì SSO nặng hơn mức tối thiểu cần) · principal thật gắn vào mọi audit entry (thay `@console`) · per-operator token cho central-mode · role gate cho các nút ghi (kill/demote/override). Đây là thứ biến Dandori từ "PoC chứng minh vision khả thi" thành "sản phẩm một tổ chức dám giao quyền" — 3/4 Tier-1 blocker đã đóng, còn lại data-at-rest encryption.
 
 ## Câu hỏi chưa giải quyết
 
-- v8 làm RBAC đầy đủ ngay, hay chỉ identity (login + principal vào audit) trước rồi RBAC sau?
+- ~~v10 làm RBAC đầy đủ ngay, hay chỉ identity trước rồi RBAC sau?~~ Trả lời: v10 làm cả hai ở mức tối thiểu (identity + 2-role gate) trong cùng plan; full granular RBAC + SSO để [Sau].
 - Ground-truth cost: đợi OpenRouter webhook, hay periodic fetch usage API?
 - Quality gate blocking: chặn *finalize* hay chặn *merge/deploy* (đúng chỗ CI/CD)?
 - Time-cost ROI cần baseline "người làm mất bao lâu" — lấy từ đâu (Jira estimate? lịch sử?)?

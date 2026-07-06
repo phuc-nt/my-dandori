@@ -34,7 +34,7 @@ func (s *Server) handleWallboard(w http.ResponseWriter, r *http.Request) {
 // action — safe for an unattended shared screen.
 func (s *Server) handleWallboardFragment(w http.ResponseWriter, r *http.Request) {
 	data := s.buildWallboardData()
-	s.renderFragment(w, "wallboard", "wallboard_fragment", map[string]any{"Wallboard": data})
+	s.renderFragment(w, r, "wallboard", "wallboard_fragment", map[string]any{"Wallboard": data})
 }
 
 // buildWallboardData assembles UG5's numbers. Degrades gracefully: no

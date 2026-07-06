@@ -1,12 +1,14 @@
 {{define "content"}}
 <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
   <h1 class="text-2xl font-bold">Org dashboard <span class="text-sm text-gray-400 font-normal">({{.Window}}-day window)</span></h1>
+  {{if .IsAdmin}}
   <div class="flex gap-2">
     <form method="post" action="/reports/confluence"><button class="bg-blue-700 text-white px-3 py-1 rounded text-sm">Post Confluence report</button></form>
     <form method="post" action="/export/compliance"><button class="bg-slate-700 text-white px-3 py-1 rounded text-sm">Compliance export</button></form>
     <form hx-post="/dash/export-sheets" hx-target="#delivery-result" hx-swap="innerHTML"><button class="bg-emerald-700 text-white px-3 py-1 rounded text-sm">Export to Sheets</button></form>
     <form hx-post="/dash/send-digest" hx-target="#delivery-result" hx-swap="innerHTML"><button class="bg-indigo-700 text-white px-3 py-1 rounded text-sm">Gửi digest ngay</button></form>
   </div>
+  {{end}}
 </div>
 <div id="delivery-result" class="mb-4"></div>
 

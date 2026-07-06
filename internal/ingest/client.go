@@ -31,7 +31,9 @@ func Enabled(cfg *config.Config) bool {
 }
 
 // Principal identifies the human on this machine (username@hostname). Sent
-// as a hint header; the server records it once per token-authed sender.
+// only as a diagnostic hint header (X-Dandori-Principal-Hint) — the server
+// derives the real principal from the bearer token server-side and never
+// trusts this header for access control (H1, prevents spoofing).
 func Principal() string {
 	name := "unknown"
 	if u, err := user.Current(); err == nil && u.Username != "" {
@@ -44,9 +46,13 @@ func Principal() string {
 	return name + "@" + host
 }
 
+// authorize attaches this machine's per-operator (or legacy shared) ingest
+// token. X-Dandori-Principal-Hint is diagnostic only — the server derives
+// the authoritative principal from the token itself, never from this
+// header, so a malicious sender cannot use it to spoof another operator.
 func (c *Client) authorize(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+c.cfg.IngestToken)
-	req.Header.Set("X-Dandori-Principal", Principal())
+	req.Header.Set("X-Dandori-Principal-Hint", Principal())
 	req.Header.Set("Content-Type", "application/json")
 }
 

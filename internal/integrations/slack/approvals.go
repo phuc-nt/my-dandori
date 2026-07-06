@@ -110,8 +110,11 @@ func (b *ApprovalBridge) pollReactions() error {
 		if !ok {
 			continue
 		}
-		actor := b.Client.UserName(user)
-		won, err := govern.Decide(b.St, r.id, verdict, actor+" ("+user+")", "via slack reaction")
+		// slack:<user_id> namespaces this actor apart from console principals
+		// (P2): the Slack user id is stable and non-spoofable (checked against
+		// Approvers above), unlike the display name.
+		actor := "slack:" + user
+		won, err := govern.Decide(b.St, r.id, verdict, actor, "via slack reaction")
 		if err != nil {
 			return err
 		}

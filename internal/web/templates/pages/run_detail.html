@@ -16,7 +16,7 @@
   </div>
   <div class="flex items-center gap-2">
     {{if .CanRetry}}<a href="/runs/{{.Run.ID}}/retry" class="bg-slate-700 text-white text-sm px-3 py-1.5 rounded">↻ Chạy lại (sửa prompt)</a>{{end}}
-    {{template "run_row_actions" .Run}}
+    {{template "run_row_actions" (dict "Run" .Run "IsAdmin" .IsAdmin)}}
   </div>
 </div>
 
@@ -33,6 +33,7 @@
 
   <div class="bg-white border rounded-lg p-4">
     <div class="font-semibold text-sm mb-2">Review PR trên GitHub</div>
+    {{if .IsAdmin}}
     <form method="post" action="/runs/{{.Run.ID}}/pr-review-request" class="flex flex-col gap-2">
       <div class="flex gap-2">
         <input name="repo" placeholder="owner/repo" required class="border rounded px-2 py-1 text-sm flex-1">
@@ -46,10 +47,14 @@
       <textarea name="body" placeholder="Nội dung (tuỳ chọn)" class="border rounded px-2 py-1 text-sm"></textarea>
       <button class="bg-slate-700 text-white text-sm px-3 py-1.5 rounded self-start">Gửi duyệt</button>
     </form>
+    {{else}}
+    <p class="text-gray-400 text-xs">Chỉ admin được gửi duyệt PR.</p>
+    {{end}}
   </div>
 
   <div class="bg-white border rounded-lg p-4">
     <div class="font-semibold text-sm mb-2">Tạo lịch review</div>
+    {{if .IsAdmin}}
     <form method="post" action="/runs/{{.Run.ID}}/calendar-request" class="flex flex-col gap-2">
       <input name="title" placeholder="Tiêu đề" required class="border rounded px-2 py-1 text-sm">
       <div class="flex gap-2">
@@ -60,6 +65,9 @@
       <input name="attendees" placeholder="Email người tham dự, cách nhau bởi dấu phẩy" class="border rounded px-2 py-1 text-sm">
       <button class="bg-slate-700 text-white text-sm px-3 py-1.5 rounded self-start">Gửi duyệt</button>
     </form>
+    {{else}}
+    <p class="text-gray-400 text-xs">Chỉ admin được tạo lịch review.</p>
+    {{end}}
   </div>
 
   <div class="bg-white border rounded-lg p-4">
@@ -134,7 +142,7 @@
      class="flex items-center gap-2">
   <span class="{{statusColor .Status}} font-semibold text-sm">{{.Status}}</span>
   {{if .Adopted}}<span class="text-xs text-amber-600">(nhận nuôi sau restart — không có log trực tiếp, nhưng vẫn dừng được)</span>{{end}}
-  {{if .Killable}}
+  {{if and .Killable $.IsAdmin}}
   <form hx-post="/runs/{{.ID}}/kill" hx-target="#status-fragment" hx-swap="outerHTML"
         onsubmit="return confirm('Dừng phiên này?')">
     <button class="bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1 rounded">Dừng</button>
@@ -152,12 +160,16 @@
 
 {{define "run_transitions"}}
 {{if .Transitions}}
+{{if $.IsAdmin}}
 <form method="post" action="/runs/{{.RunID}}/transition-request" class="flex gap-2">
   <select name="transition_name" class="border rounded px-2 py-1 text-sm flex-1">
     {{range .Transitions}}<option value="{{.Name}}">{{.Name}} → {{.To.Name}}</option>{{end}}
   </select>
   <button class="bg-slate-700 text-white text-sm px-3 py-1.5 rounded">Gửi duyệt</button>
 </form>
+{{else}}
+<span class="text-xs text-gray-400">Chỉ admin được đổi trạng thái Jira.</span>
+{{end}}
 {{else}}
 <span class="text-xs text-gray-400">Không có trạng thái nào khả dụng cho {{.TaskKey}}.</span>
 {{end}}
@@ -175,13 +187,15 @@
     <span class="text-xs text-gray-400">pass</span>
     {{else if .Overridden}}
     <span class="text-xs text-amber-600" title="{{.Reason}}">đã bỏ qua bởi {{.OverriddenBy}} ({{.OverriddenAt}}): {{.Reason}}</span>
-    {{else}}
+    {{else if $.IsAdmin}}
     <form hx-post="/runs/{{$.RunID}}/override-gate" hx-target="#gate-results-{{$.RunID}}" hx-swap="outerHTML"
           class="flex gap-1 items-center">
       <input type="hidden" name="check_name" value="{{.CheckName}}">
       <input name="reason" placeholder="lý do bỏ qua (bắt buộc)" required class="border rounded px-2 py-1 text-xs w-48">
       <button class="bg-amber-500 text-white text-xs px-2 py-1 rounded">Ghi đè</button>
     </form>
+    {{else}}
+    <span class="text-xs text-gray-400">chỉ admin ghi đè được</span>
     {{end}}
   </div>
   {{else}}

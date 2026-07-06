@@ -16,7 +16,7 @@ func (s *Server) handleSetBand(w http.ResponseWriter, r *http.Request) {
 	if reason == "" {
 		reason = "set from console"
 	}
-	if err := govern.SetBand(s.Store, agent, band, s.Cfg.UserName, reason); err != nil {
+	if err := govern.SetBand(s.Store, agent, band, s.actor(r), reason); err != nil {
 		http.Error(w, err.Error(), 400)
 		return
 	}

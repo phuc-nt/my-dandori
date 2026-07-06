@@ -15,6 +15,7 @@
       {{template "status_pill" intstatus .Health "jira"}}
     </div>
     <form hx-post="/settings/integrations/jira" hx-target="#result-jira" hx-swap="innerHTML" class="space-y-2">
+      {{if .IsAdmin}}
       <label class="block text-sm">Site (chỉ tên, ví dụ <code>acme</code>)<br>
         <input name="ATLASSIAN_SITE_NAME" class="border rounded px-2 py-1 w-full" placeholder="{{index .Masked "ATLASSIAN_SITE_NAME"}}"></label>
       <label class="block text-sm">Email<br>
@@ -23,8 +24,9 @@
         <input name="ATLASSIAN_API_TOKEN" type="password" class="border rounded px-2 py-1 w-full" placeholder="{{index .Masked "ATLASSIAN_API_TOKEN"}}"></label>
       <label class="block text-sm">Confluence space id (tuỳ chọn)<br>
         <input name="CONFLUENCE_SPACE_ID" class="border rounded px-2 py-1 w-full"></label>
+      {{end}}
       <div class="flex gap-2 pt-1">
-        <button class="bg-slate-700 text-white px-4 py-2 rounded text-sm">Lưu</button>
+        {{if .IsAdmin}}<button class="bg-slate-700 text-white px-4 py-2 rounded text-sm">Lưu</button>{{end}}
         <button type="button" class="bg-gray-200 px-4 py-2 rounded text-sm"
           hx-post="/settings/integrations/jira/test" hx-target="#result-jira" hx-swap="innerHTML">Kiểm tra</button>
       </div>
@@ -40,14 +42,16 @@
     </div>
     <p class="text-xs text-gray-500 mb-2">Lấy <code>xoxc</code>/<code>xoxd</code> từ cookie trình duyệt khi đăng nhập Slack (DevTools → Application → Cookies). Giữ nguyên phần mã hoá URL.</p>
     <form hx-post="/settings/integrations/slack" hx-target="#result-slack" hx-swap="innerHTML" class="space-y-2">
+      {{if .IsAdmin}}
       <label class="block text-sm">xoxc token<br>
         <input name="SLACK_XOXC_TOKEN" type="password" class="border rounded px-2 py-1 w-full" placeholder="{{index .Masked "SLACK_XOXC_TOKEN"}}"></label>
       <label class="block text-sm">xoxd token<br>
         <input name="SLACK_XOXD_TOKEN" type="password" class="border rounded px-2 py-1 w-full" placeholder="{{index .Masked "SLACK_XOXD_TOKEN"}}"></label>
       <label class="block text-sm">Team domain<br>
         <input name="SLACK_TEAM_DOMAIN" class="border rounded px-2 py-1 w-full"></label>
+      {{end}}
       <div class="flex gap-2 pt-1">
-        <button class="bg-slate-700 text-white px-4 py-2 rounded text-sm">Lưu</button>
+        {{if .IsAdmin}}<button class="bg-slate-700 text-white px-4 py-2 rounded text-sm">Lưu</button>{{end}}
         <button type="button" class="bg-gray-200 px-4 py-2 rounded text-sm"
           hx-post="/settings/integrations/slack/test" hx-target="#result-slack" hx-swap="innerHTML">Kiểm tra</button>
       </div>
@@ -62,10 +66,12 @@
       {{template "status_pill" intstatus .Health "openrouter"}}
     </div>
     <form hx-post="/settings/integrations/openrouter" hx-target="#result-openrouter" hx-swap="innerHTML" class="space-y-2">
+      {{if .IsAdmin}}
       <label class="block text-sm">API key<br>
         <input name="OPENROUTER_API_KEY" type="password" class="border rounded px-2 py-1 w-full" placeholder="{{index .Masked "OPENROUTER_API_KEY"}}"></label>
+      {{end}}
       <div class="flex gap-2 pt-1">
-        <button class="bg-slate-700 text-white px-4 py-2 rounded text-sm">Lưu</button>
+        {{if .IsAdmin}}<button class="bg-slate-700 text-white px-4 py-2 rounded text-sm">Lưu</button>{{end}}
         <button type="button" class="bg-gray-200 px-4 py-2 rounded text-sm"
           hx-post="/settings/integrations/openrouter/test" hx-target="#result-openrouter" hx-swap="innerHTML">Kiểm tra</button>
       </div>

@@ -26,6 +26,7 @@
       {{end}}
     {{end}}
   </div>
+  {{if .IsAdmin}}
   <form hx-post="/chat/message" hx-target="#chat-messages" hx-swap="beforeend"
         hx-on::after-request="this.reset(); var m=document.getElementById('chat-messages'); m.scrollTop=m.scrollHeight"
         hx-indicator="#chat-waiting"
@@ -36,6 +37,9 @@
     <span id="chat-waiting" class="htmx-indicator self-center text-gray-400 text-sm">đang nghĩ…</span>
     <button class="bg-blue-700 text-white rounded-full px-5 py-2">Gửi</button>
   </form>
+  {{else}}
+  <div class="border-t p-3 text-sm text-gray-400">Chỉ admin được gửi câu hỏi tới trợ lý.</div>
+  {{end}}
 </div>
 {{end}}
 {{end}}

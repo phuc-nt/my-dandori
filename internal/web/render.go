@@ -20,7 +20,7 @@ var pageNames = []string{
 	"standup", "dash_org", "dash_project", "dash_agent",
 	"runs", "run_detail", "run_compare", "reviews", "budgets", "provenance", "rules", "spikes", "playbooks",
 	"chat", "exec_home", "contexts", "launch", "gate_thresholds", "wallboard",
-	"settings_integrations", "welcome", "risk", "insights",
+	"settings_integrations", "welcome", "risk", "insights", "login",
 }
 
 type renderer struct {
@@ -36,6 +36,23 @@ type navItem struct {
 
 var tmplFuncs = template.FuncMap{
 	"list": func(items ...any) []any { return items },
+	// dict builds a map[string]any from alternating key/value args, so a
+	// defined-template invoked with a nested value (e.g. {{template "x" .Run}})
+	// can still carry root-level fields like IsAdmin alongside it.
+	"dict": func(pairs ...any) (map[string]any, error) {
+		if len(pairs)%2 != 0 {
+			return nil, fmt.Errorf("dict: odd number of arguments")
+		}
+		m := make(map[string]any, len(pairs)/2)
+		for i := 0; i < len(pairs); i += 2 {
+			key, ok := pairs[i].(string)
+			if !ok {
+				return nil, fmt.Errorf("dict: key at index %d is not a string", i)
+			}
+			m[key] = pairs[i+1]
+		}
+		return m, nil
+	},
 	// intstatus finds one integration's health by name for the settings page.
 	"intstatus": func(h Health, name string) IntegrationHealth {
 		for _, i := range h.Integrations {
@@ -120,6 +137,13 @@ func (s *Server) render(w http.ResponseWriter, req *http.Request, page string, d
 		if _, set := m["KillOn"]; !set {
 			m["KillOn"] = s.Store.Setting("kill_switch_global") == "1"
 		}
+		// Every page needs to know whether to render mutation buttons/forms
+		// server-side (viewer sees none — 403 backstop in role_middleware.go
+		// is not a UI substitute). Centralized here like Mode/KillOn so no
+		// handler can forget to set it.
+		if _, set := m["IsAdmin"]; !set {
+			m["IsAdmin"] = IsAdmin(req)
+		}
 		// The exec sidebar shows a "cần duyệt" badge on every exec page.
 		if m["Mode"] == "exec" {
 			if _, set := m["InboxCount"]; !set {
@@ -139,11 +163,21 @@ func (s *Server) render(w http.ResponseWriter, req *http.Request, page string, d
 }
 
 // renderFragment always renders one named template (HTMX swap responses).
-func (s *Server) renderFragment(w http.ResponseWriter, page, fragment string, data any) {
+// Several fragments (runs table rows, reviews queue, budgets table) carry
+// their own mutation buttons/forms and are swapped in directly without going
+// through render()'s layout path, so IsAdmin must be injected here too —
+// otherwise a viewer polling/refreshing one of these fragments would see
+// admin-only buttons render regardless of role.
+func (s *Server) renderFragment(w http.ResponseWriter, req *http.Request, page, fragment string, data any) {
 	t, ok := s.tmpl.pages[page]
 	if !ok {
 		http.Error(w, "unknown page "+page, 500)
 		return
+	}
+	if m, ok := data.(map[string]any); ok {
+		if _, set := m["IsAdmin"]; !set {
+			m["IsAdmin"] = IsAdmin(req)
+		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.ExecuteTemplate(w, fragment, data); err != nil {

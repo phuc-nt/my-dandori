@@ -8,6 +8,7 @@ package web
 // `s.routes()` in server.go, or from routes() itself once merged).
 func (s *Server) registerPhase05Routes() {
 	s.mux.Get("/gate-thresholds", s.handleGateThresholds)
-	s.mux.Post("/gate-thresholds", s.handleGateThresholdsSet)
+	// admin (C4): GOVERN policy write.
+	s.mux.With(s.requireAdmin).Post("/gate-thresholds", s.handleGateThresholdsSet)
 	s.mux.Get("/assign/suggest", s.handleAssignmentSuggest)
 }

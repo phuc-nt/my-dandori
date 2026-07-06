@@ -35,7 +35,7 @@ func (s *Server) handleSettingsTest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown integration", http.StatusNotFound)
 		return
 	}
-	s.runTest(w, name)
+	s.runTest(w, r, name)
 }
 
 // handleSettingsSave writes the pasted keys to ./.env, applies them in-process
@@ -55,13 +55,13 @@ func (s *Server) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(kv) == 0 {
-		s.renderFragment(w, "settings_integrations", "inttest_result",
+		s.renderFragment(w, r, "settings_integrations", "inttest_result",
 			testView(name, probe.ProbeResult{OK: false, Note: "chưa nhập giá trị nào"}, true))
 		return
 	}
 	if err := config.SaveEnvKeys(kv); err != nil {
 		// err may name a key but never the value; still keep it terse.
-		s.renderFragment(w, "settings_integrations", "inttest_result",
+		s.renderFragment(w, r, "settings_integrations", "inttest_result",
 			testView(name, probe.ProbeResult{OK: false, Note: "không lưu được cấu hình"}, true))
 		return
 	}
@@ -72,18 +72,18 @@ func (s *Server) handleSettingsSave(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Cfg.ReloadSecretsFromEnv()
 	// Audit the change WITHOUT any secret value.
-	a := &govern.Audit{St: s.Store, Actor: s.execActor()}
+	a := &govern.Audit{St: s.Store, Actor: s.actor(r)}
 	_, _ = a.Append("credential_updated", name, "cập nhật qua UI")
-	s.runTest(w, name)
+	s.runTest(w, r, name)
 }
 
 // runTest probes an integration, caches the outcome, and renders the result
 // fragment (with the restart notice).
-func (s *Server) runTest(w http.ResponseWriter, name string) {
+func (s *Server) runTest(w http.ResponseWriter, r *http.Request, name string) {
 	res := probe.Probe(name, s.Cfg)
 	cache, _ := json.Marshal(TestInfo{OK: res.OK, At: store.Now(), Note: res.Note})
 	_ = s.Store.SetSetting("inttest:"+name, string(cache))
-	s.renderFragment(w, "settings_integrations", "inttest_result", testView(name, res, true))
+	s.renderFragment(w, r, "settings_integrations", "inttest_result", testView(name, res, true))
 }
 
 // testView is the fragment data for a probe result.

@@ -23,7 +23,7 @@ func (s *Server) handleRisk(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRiskFragment(w http.ResponseWriter, r *http.Request) {
-	s.renderFragment(w, "risk", "risk_body", s.riskData())
+	s.renderFragment(w, r, "risk", "risk_body", s.riskData())
 }
 
 func (s *Server) riskData() map[string]any {

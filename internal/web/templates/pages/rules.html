@@ -16,16 +16,20 @@
       <td class="p-2 text-xs">{{.ScopeType}}{{if .ScopeID}}: {{.ScopeID}}{{end}}</td>
       <td class="p-2">{{.Description}}</td>
       <td class="p-2">
+        {{if $.IsAdmin}}
         <form method="post" action="/rules/{{.ID}}/toggle">
           <button class="{{if .Enabled}}bg-green-600{{else}}bg-gray-400{{end}} text-white px-3 py-1 rounded text-xs">
             {{if .Enabled}}ON — disable{{else}}OFF — enable{{end}}
           </button>
         </form>
+        {{end}}
       </td>
       <td class="p-2">
+        {{if $.IsAdmin}}
         <form method="post" action="/rules/{{.ID}}/delete" onsubmit="return confirm('Delete rule #{{.ID}}?')">
           <button class="text-red-600 text-xs hover:underline">delete</button>
         </form>
+        {{end}}
       </td>
     </tr>
   {{else}}
@@ -57,7 +61,9 @@
   <div class="flex gap-2 md:col-span-3">
     <button hx-post="/rules/simulate" hx-target="#sim-out" hx-swap="innerHTML" hx-include="#rule-form"
             class="bg-blue-700 text-white px-4 py-2 rounded" type="button">Simulate on last {{.Window}} days</button>
+    {{if .IsAdmin}}
     <button formaction="/rules" formmethod="post" class="bg-slate-700 text-white px-4 py-2 rounded">Create rule</button>
+    {{end}}
   </div>
 </form>
 

@@ -22,7 +22,7 @@ func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
 	history, _ := s.queryApprovals("")
 	data := map[string]any{"Page": "reviews", "Pending": pending, "History": history}
 	if isHTMX(r) {
-		s.renderFragment(w, "reviews", "reviews_pending", data)
+		s.renderFragment(w, r, "reviews", "reviews_pending", data)
 		return
 	}
 	s.render(w, r, "reviews", data)
@@ -43,7 +43,7 @@ func (s *Server) handleReviewDecide(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a reason is required when rejecting", 400)
 		return
 	}
-	won, err := govern.Decide(s.Store, id, approve, s.Cfg.UserName, note)
+	won, err := govern.Decide(s.Store, id, approve, s.actor(r), note)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return

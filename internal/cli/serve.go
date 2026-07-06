@@ -41,6 +41,7 @@ var serveCmd = &cobra.Command{
 		installConsoleShutdown(st)
 		wireIntegrations(cfg, st, srv)
 		startWorkers(cmd.Context(), cfg, st)
+		go srv.RunGC(cmd.Context()) // hourly: expired sessions + stale rate-limiter entries
 		// The ingest listener is a SEPARATE server: routable bind, token
 		// auth, zero console routes. It only starts when a token is set —
 		// no token, no network surface.

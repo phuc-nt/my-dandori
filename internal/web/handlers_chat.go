@@ -8,19 +8,16 @@ import (
 	"github.com/phuc-nt/dandori/internal/chat"
 )
 
-// chatPrincipal is the single-principal MVP identity (see plan Trust model).
-func (s *Server) chatPrincipal() string { return s.Cfg.UserName + "@console" }
-
 // handleChatPage renders the assistant with today's history. When the model
 // cannot call tools the page shows a Vietnamese notice instead of a silently
 // hallucinating chatbot.
 func (s *Server) handleChatPage(w http.ResponseWriter, r *http.Request) {
-	c := chat.NewClient(s.Cfg, s.Store, s.chatPrincipal())
+	c := chat.NewClient(s.Cfg, s.Store, s.actor(r))
 	var notice string
 	if err := c.SupportsTools(); err != nil {
 		notice = "Trợ lý tạm không khả dụng: " + err.Error()
 	}
-	sessionID, _ := chat.Session(s.Store, s.chatPrincipal())
+	sessionID, _ := chat.Session(s.Store, s.actor(r))
 	history, _ := chat.History(s.Store, sessionID, 50)
 	s.render(w, r, "chat", map[string]any{
 		"Page": "chat", "History": history, "Notice": notice,
@@ -37,7 +34,7 @@ func (s *Server) handleChatMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "empty or oversized message", http.StatusBadRequest)
 		return
 	}
-	c := chat.NewClient(s.Cfg, s.Store, s.chatPrincipal())
+	c := chat.NewClient(s.Cfg, s.Store, s.actor(r))
 	answer, err := c.Ask(text)
 	if err != nil {
 		answer = "Có lỗi khi gọi trợ lý: " + err.Error()

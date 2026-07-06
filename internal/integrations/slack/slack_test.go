@@ -153,7 +153,7 @@ func TestApprovalReactionApproves(t *testing.T) {
 	b.Tick() // polls and approves
 	var status, by, note string
 	st.DB.QueryRow(`SELECT status, decided_by, decision_note FROM approvals WHERE id=1`).Scan(&status, &by, &note)
-	if status != "approved" || by != "Phuc N. (U123)" || note != "via slack reaction" {
+	if status != "approved" || by != "slack:U123" || note != "via slack reaction" {
 		t.Errorf("approval: %s by %q note %q", status, by, note)
 	}
 	var audits int

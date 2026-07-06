@@ -6,6 +6,7 @@
   {{template "budgets_table" .}}
 </div>
 
+{{if .IsAdmin}}
 <h2 class="text-lg font-semibold mt-6 mb-2">Add budget</h2>
 <form method="post" action="/budgets" class="bg-white border rounded-lg p-4 flex gap-2 items-end flex-wrap">
   <label class="text-sm">Scope<br>
@@ -22,4 +23,5 @@
     <input name="limit_usd" type="number" step="0.01" min="0" required class="border rounded px-2 py-1 w-32"></label>
   <button class="bg-slate-700 text-white px-4 py-2 rounded">Set budget</button>
 </form>
+{{end}}
 {{end}}

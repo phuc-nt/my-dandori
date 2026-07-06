@@ -21,7 +21,7 @@ func (s *Server) handleBulkKill(w http.ResponseWriter, r *http.Request) {
 		s.bulkResult(w, "Chưa chọn run nào.")
 		return
 	}
-	actor := s.launchActor()
+	actor := s.actor(r)
 	var signaled, marked, failed int
 	for _, id := range ids {
 		var (
@@ -63,7 +63,7 @@ func (s *Server) handleBulkBudget(w http.ResponseWriter, r *http.Request) {
 		s.bulkResult(w, "Chưa chọn run nào.")
 		return
 	}
-	actor := s.launchActor()
+	actor := s.actor(r)
 	seen := map[string]bool{}
 	var set, failed int
 	for _, id := range ids {

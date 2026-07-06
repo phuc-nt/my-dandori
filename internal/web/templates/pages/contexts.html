@@ -47,12 +47,14 @@
           <td class="p-2 text-xs">{{.CreatedAt}}</td>
           <td class="p-2 text-xs">{{.Note}}</td>
           <td class="p-2">
+            {{if $.IsAdmin}}
             <form method="post" action="/contexts/rollback" onsubmit="return confirm('Khôi phục về v{{.VersionN}}?')">
               <input type="hidden" name="layer" value="{{$.HistoryLayer}}">
               <input type="hidden" name="target" value="{{$.HistoryTarget}}">
               <input type="hidden" name="to" value="{{.VersionN}}">
               <button class="text-xs text-red-600 hover:underline">khôi phục</button>
             </form>
+            {{end}}
           </td>
         </tr>
       {{end}}
@@ -67,6 +69,7 @@
 <div id="ctx-banner"></div>
 <div class="grid md:grid-cols-3 gap-4">
   <div class="md:col-span-2 bg-white border rounded-lg p-4">
+    {{if .IsAdmin}}
     <form hx-post="/contexts/save" hx-target="#ctx-banner" hx-swap="innerHTML">
       <div class="grid grid-cols-2 gap-3 mb-3">
         <label class="text-sm">Tầng<br>
@@ -86,6 +89,9 @@
       <input name="note" class="border rounded px-2 py-1 w-full mt-2 text-sm" placeholder="ghi chú thay đổi (tuỳ chọn)">
       <button class="bg-slate-700 text-white px-4 py-2 rounded mt-2">Lưu</button>
     </form>
+    {{else}}
+    <p class="text-gray-400 text-sm">Chỉ admin được sửa context.</p>
+    {{end}}
   </div>
   <div class="bg-white border rounded-lg p-4">
     <div class="font-semibold mb-2 text-sm">Các doc hiện có</div>
@@ -98,7 +104,7 @@
         </div>
         <div class="flex gap-2 mt-1">
           <a class="text-blue-600 text-xs" href="/contexts/{{.Layer}}/{{.TargetID}}/history">lịch sử</a>
-          {{if eq .Layer "team"}}
+          {{if and (eq .Layer "team") $.IsAdmin}}
           <form method="post" action="/contexts/promote" onsubmit="return confirm('Đề xuất chính sách đội này thành chính sách công ty?')">
             <input type="hidden" name="team" value="{{.TargetID}}">
             <button class="text-xs text-purple-700 hover:underline">→ đề xuất thành chính sách công ty</button>
@@ -147,6 +153,7 @@
       {{else}}
       <div class="text-xs text-gray-500 mb-1">Toàn bộ nội dung (cuộn để xem hết) — sẽ được gửi duyệt nguyên văn:</div>
       <pre class="text-xs leading-5 bg-gray-50 border rounded p-3 overflow-y-auto whitespace-pre-wrap" style="max-height:320px">{{.FullText}}</pre>
+      {{if $.IsAdmin}}
       <form hx-post="/contexts/drive-import" hx-target="#ctx-banner" hx-swap="innerHTML" class="grid grid-cols-2 gap-3 mt-3">
         <input type="hidden" name="doc_id" value="{{.DocID}}">
         <input type="hidden" name="doc_name" value="{{.DocName}}">
@@ -161,6 +168,9 @@
           <input name="target" list="ctx-targets" class="border rounded px-2 py-1 w-full" placeholder="* / team id / agent id"></label>
         <button class="bg-purple-700 text-white px-4 py-2 rounded col-span-2">Gửi duyệt nhập</button>
       </form>
+      {{else}}
+      <p class="text-gray-400 text-sm">Chỉ admin được gửi duyệt nhập context.</p>
+      {{end}}
       {{end}}
     </div>
     {{end}}

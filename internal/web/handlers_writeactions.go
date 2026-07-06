@@ -46,7 +46,7 @@ func (s *Server) handleRunTransitions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	s.renderFragment(w, "run_detail", "run_transitions", map[string]any{
+	s.renderFragment(w, r, "run_detail", "run_transitions", map[string]any{
 		"RunID": id, "TaskKey": taskKey, "Transitions": transitions,
 	})
 }
@@ -68,7 +68,7 @@ func (s *Server) handleTransitionRequest(w http.ResponseWriter, r *http.Request)
 	}
 	summary := fmt.Sprintf("Chuyển %s sang trạng thái %q (chờ duyệt).", taskKey, name)
 	params := map[string]any{"key": taskKey, "transition_name": name}
-	if _, err := observer.RequestAction(s.Store, "jira-transition", taskKey, summary, params, s.execActor(), "operator"); err != nil {
+	if _, err := observer.RequestAction(s.Store, "jira-transition", taskKey, summary, params, s.actor(r), "operator"); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -99,7 +99,7 @@ func (s *Server) handlePRReviewRequest(w http.ResponseWriter, r *http.Request) {
 	params := map[string]any{
 		"repo": repo, "num": num, "decision": decision, "body": body, "head_sha": headSHA,
 	}
-	if _, err := observer.RequestAction(s.Store, "pr-review", subject, summary, params, s.execActor(), "operator"); err != nil {
+	if _, err := observer.RequestAction(s.Store, "pr-review", subject, summary, params, s.actor(r), "operator"); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -135,10 +135,10 @@ func (s *Server) handleOverrideGate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a justification is required to override a failed gate check", http.StatusBadRequest)
 		return
 	}
-	auditor := &auditAppender{s: s}
-	if err := learn.OverrideGate(s.Store, auditor, id, checkName, s.execActor(), reason); err != nil {
+	auditor := &auditAppender{s: s, r: r}
+	if err := learn.OverrideGate(s.Store, auditor, id, checkName, s.actor(r), reason); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.renderRunGateResults(w, id)
+	s.renderRunGateResults(w, r, id)
 }

@@ -16,6 +16,7 @@
 <form id="bulk-form">
 <!-- Bulk action bar (UA6): select rows → kill / set-budget, each audited -->
 <div class="flex items-center gap-2 mb-2 text-sm">
+  {{if .IsAdmin}}
   <button hx-post="/runs/bulk-kill" hx-include="#bulk-form" hx-target="#bulk-result" hx-swap="innerHTML"
           hx-confirm="Dừng các run đã chọn?"
           class="bg-red-600 text-white px-3 py-1 rounded">Dừng các run đã chọn</button>
@@ -23,6 +24,9 @@
          class="border rounded px-2 py-1 w-32">
   <button hx-post="/runs/bulk-budget" hx-include="#bulk-form" hx-target="#bulk-result" hx-swap="innerHTML"
           class="bg-slate-600 text-white px-3 py-1 rounded">Đặt ngân sách (theo agent)</button>
+  {{else}}
+  <span class="text-xs text-gray-400">chỉ admin thao tác hàng loạt được</span>
+  {{end}}
   <div id="bulk-result" class="flex-1"></div>
 </div>
 <div class="bg-white border rounded-lg overflow-hidden">

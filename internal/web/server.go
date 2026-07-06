@@ -4,18 +4,27 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/phuc-nt/dandori/internal/auth"
 	"github.com/phuc-nt/dandori/internal/config"
 	"github.com/phuc-nt/dandori/internal/runner"
 	"github.com/phuc-nt/dandori/internal/store"
 )
+
+// gcInterval controls how often RunGC sweeps expired sessions and stale
+// rate-limiter entries. Hourly is frequent enough to bound growth on a
+// long-running server without adding meaningful DB/CPU load.
+const gcInterval = time.Hour
 
 type Server struct {
 	Cfg   *config.Config
@@ -30,8 +39,10 @@ type Server struct {
 	// after construction; nil when launch isn't wired (tests).
 	Launcher *runner.Launcher
 
-	mux  *chi.Mux
-	tmpl *renderer
+	mux       *chi.Mux
+	tmpl      *renderer
+	sessions  *auth.SessionStore
+	rateLimit *auth.RateLimiter
 }
 
 // New builds the console server. templatesDir != "" reads templates from disk
@@ -45,11 +56,38 @@ func New(cfg *config.Config, st *store.Store, templatesDir ...string) (*Server, 
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{Cfg: cfg, Store: st, mux: chi.NewRouter(), tmpl: tmpl}
+	s := &Server{
+		Cfg: cfg, Store: st, mux: chi.NewRouter(), tmpl: tmpl,
+		sessions:  auth.NewSessionStore(st),
+		rateLimit: auth.NewRateLimiter(),
+	}
 	s.mux.Use(middleware.Recoverer)
 	s.mux.Use(s.originGuard)
+	s.mux.Use(s.sessionMiddleware) // after originGuard: CSRF/host checks run first
 	s.routes()
+	s.registerAuthRoutes()
 	return s, nil
+}
+
+// RunGC sweeps expired sessions (SQLite) and stale rate-limiter entries
+// (in-memory maps) on gcInterval until ctx is cancelled. Both stores grow
+// unbounded without this: sessions past absolute expiry are never deleted
+// otherwise, and rate-limiter buckets/failures accumulate per unique
+// ip/username seen. Call as a goroutine from serve bootstrap.
+func (s *Server) RunGC(ctx context.Context) {
+	t := time.NewTicker(gcInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if err := s.sessions.GC(); err != nil {
+				log.Println("session gc:", err)
+			}
+			s.rateLimit.GC()
+		}
+	}
 }
 
 // originGuard rejects requests whose Host is not this console (DNS-rebinding
@@ -57,11 +95,24 @@ func New(cfg *config.Config, st *store.Store, templatesDir ...string) (*Server, 
 // gate / kill switch). The console has no auth by design (localhost bind), so
 // this boundary is what keeps a random browser tab from driving GOVERN.
 func (s *Server) originGuard(next http.Handler) http.Handler {
-	_, port, _ := net.SplitHostPort(s.Cfg.Listen)
+	host, port, _ := net.SplitHostPort(s.Cfg.Listen)
 	allowed := map[string]bool{
 		s.Cfg.Listen:        true,
 		"localhost:" + port: true,
 		"127.0.0.1:" + port: true,
+	}
+	// Deliberately non-loopback bind (e.g. Listen="0.0.0.0:PORT" to reach the
+	// C2 bootstrap page over LAN): a browser's Host header carries the actual
+	// interface IP, which never equals the literal wildcard address above.
+	// Allow the machine's own non-loopback interface IPs at the configured
+	// port — this is the legitimate bind target, not an open allowlist; a
+	// spoofed/foreign Host still fails since it won't be one of THIS host's
+	// addresses. Loopback binds are untouched (host stays 127.0.0.1/localhost
+	// only), so DNS-rebinding protection for the default mode is unchanged.
+	if host == "0.0.0.0" || host == "" || host == "::" {
+		for _, ip := range localNonLoopbackIPs() {
+			allowed[net.JoinHostPort(ip, port)] = true
+		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !allowed[r.Host] {
@@ -88,9 +139,38 @@ func (s *Server) originGuard(next http.Handler) http.Handler {
 					return
 				}
 			}
+			// [C5] Defense-in-depth: even with a same-origin-looking Origin,
+			// a browser-sent Sec-Fetch-Site of "cross-site" means some other
+			// origin initiated the request (fetch metadata can't be spoofed by
+			// script). Absent header = non-browser client (curl/tests), trusted
+			// on localhost; only an explicit cross-site value is rejected here.
+			if sfs := r.Header.Get("Sec-Fetch-Site"); sfs == "cross-site" {
+				http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// localNonLoopbackIPs returns this machine's own non-loopback interface IPs
+// (e.g. LAN address like 192.168.1.5), best-effort. Used only to extend the
+// originGuard Host allowlist when the console is deliberately bound to a
+// wildcard address — never used to accept an arbitrary caller-supplied Host.
+func localNonLoopbackIPs() []string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	var ips []string
+	for _, a := range addrs {
+		ipNet, ok := a.(*net.IPNet)
+		if !ok || ipNet.IP.IsLoopback() || ipNet.IP.To4() == nil {
+			continue
+		}
+		ips = append(ips, ipNet.IP.String())
+	}
+	return ips
 }
 
 func (s *Server) routes() {
@@ -102,75 +182,75 @@ func (s *Server) routes() {
 
 	s.mux.Get("/", s.handleHome) // mode-aware: exec home or standup
 	s.mux.Get("/standup", s.handleStandup)
-	s.mux.Post("/mode", s.handleSetMode)
+	s.mux.Post("/mode", s.handleSetMode) // viewer-ok: cookie UI, no DB mutation
 	s.mux.Get("/exec", s.handleExecHome)
-	s.mux.Post("/exec/approve/{id}", s.handleExecApprove)
-	s.mux.Post("/exec/insight/{id}/dismiss", s.handleExecDismiss)
+	s.mux.With(s.requireAdmin).Post("/exec/approve/{id}", s.handleExecApprove)
+	s.mux.With(s.requireAdmin).Post("/exec/insight/{id}/dismiss", s.handleExecDismiss)
 	s.mux.Get("/insights", s.handleInsights)
 	s.mux.Get("/dash/org", s.handleDashOrg)
 	s.mux.Get("/dash/project/{project}", s.handleDashProject)
 	s.mux.Get("/dash/agent/{agent}", s.handleDashAgent)
-	s.mux.Post("/agents/{agent}/band", s.handleSetBand)
+	s.mux.With(s.requireAdmin).Post("/agents/{agent}/band", s.handleSetBand)
 	s.mux.Get("/agents/{agent}/review", s.handleAgentAIReview)
 
 	s.mux.Get("/launch", s.handleLaunchForm)
-	s.mux.Post("/launch", s.handleLaunch)
+	s.mux.With(s.requireAdmin).Post("/launch", s.handleLaunch) // spend + execute code (C4)
 	s.mux.Get("/runs/{id}/retry", s.handleRetryForm)
-	s.mux.Post("/runs/{id}/retry", s.handleRetry)
+	s.mux.With(s.requireAdmin).Post("/runs/{id}/retry", s.handleRetry) // spend + execute (C4)
 
 	s.mux.Get("/runs", s.handleRuns)
-	s.mux.Post("/runs/bulk-kill", s.handleBulkKill)
-	s.mux.Post("/runs/bulk-budget", s.handleBulkBudget)
+	s.mux.With(s.requireAdmin).Post("/runs/bulk-kill", s.handleBulkKill)
+	s.mux.With(s.requireAdmin).Post("/runs/bulk-budget", s.handleBulkBudget)
 	s.mux.Get("/runs/compare", s.handleRunCompare)
 	s.mux.Get("/spikes", s.handleSpikes)
 	s.mux.Get("/runs/{id}", s.handleRunDetail)
 	s.mux.Get("/runs/{id}/status-fragment", s.handleRunStatusFragment)
 	s.mux.Get("/runs/{id}/log-tail", s.handleRunLogTail)
-	s.mux.Post("/runs/{id}/kill", s.handleRunKill)
-	s.mux.Post("/runs/{id}/task-key", s.handleRunTaskKey)
-	s.mux.Post("/runs/{id}/flag", s.handleRunFlag)
-	s.mux.Post("/runs/{id}/playbook", s.handlePlaybookCreate)
+	s.mux.With(s.requireAdmin).Post("/runs/{id}/kill", s.handleRunKill)
+	s.mux.Post("/runs/{id}/task-key", s.handleRunTaskKey) // viewer-ok: metadata annotate
+	s.mux.Post("/runs/{id}/flag", s.handleRunFlag)         // viewer-ok: signal (like reaction)
+	s.mux.Post("/runs/{id}/playbook", s.handlePlaybookCreate) // viewer-ok: knowledge capture
 	s.mux.Get("/playbooks", s.handlePlaybooks)
-	s.mux.Post("/playbooks/{id}/adopt", s.handlePlaybookAdopt)
+	s.mux.Post("/playbooks/{id}/adopt", s.handlePlaybookAdopt) // viewer-ok: metric
 
 	s.mux.Get("/contexts", s.handleContexts)
-	s.mux.Post("/contexts/save", s.handleContextSave)
+	s.mux.With(s.requireAdmin).Post("/contexts/save", s.handleContextSave)
 	s.mux.Get("/contexts/{layer}/{target}/history", s.handleContextHistory)
 	s.mux.Get("/contexts/diff", s.handleContextDiff)
-	s.mux.Post("/contexts/rollback", s.handleContextRollback)
-	s.mux.Post("/contexts/promote", s.handleContextPromote)
+	s.mux.With(s.requireAdmin).Post("/contexts/rollback", s.handleContextRollback)
+	s.mux.With(s.requireAdmin).Post("/contexts/promote", s.handleContextPromote)
 	s.mux.Get("/contexts/effective", s.handleContextEffective)
 	s.mux.Get("/contexts/drive-search", s.handleDriveSearch)
 	s.mux.Get("/contexts/drive-review", s.handleDriveReview)
-	s.mux.Post("/contexts/drive-import", s.handleDriveImport)
+	s.mux.With(s.requireAdmin).Post("/contexts/drive-import", s.handleDriveImport)
 
 	s.mux.Get("/reviews", s.handleReviews)
-	s.mux.Post("/reviews/{id}/decide", s.handleReviewDecide)
+	s.mux.With(s.requireAdmin).Post("/reviews/{id}/decide", s.handleReviewDecide)
 
 	s.mux.Get("/chat", s.handleChatPage)
-	s.mux.Post("/chat/message", s.handleChatMessage)
+	s.mux.With(s.requireAdmin).Post("/chat/message", s.handleChatMessage)
 
 	s.mux.Get("/budgets", s.handleBudgets)
-	s.mux.Post("/budgets", s.handleBudgetSet)
+	s.mux.With(s.requireAdmin).Post("/budgets", s.handleBudgetSet)
 
 	s.mux.Get("/provenance", s.handleProvenance)
 	s.mux.Get("/rules", s.handleRules)
-	s.mux.Post("/rules", s.handleRuleCreate)
-	s.mux.Post("/rules/simulate", s.handleRuleSimulate)
-	s.mux.Post("/rules/{id}/toggle", s.handleRuleToggle)
-	s.mux.Post("/rules/{id}/delete", s.handleRuleDelete)
+	s.mux.With(s.requireAdmin).Post("/rules", s.handleRuleCreate)
+	s.mux.Post("/rules/simulate", s.handleRuleSimulate) // viewer-ok: read-only sim
+	s.mux.With(s.requireAdmin).Post("/rules/{id}/toggle", s.handleRuleToggle)
+	s.mux.With(s.requireAdmin).Post("/rules/{id}/delete", s.handleRuleDelete)
 
-	s.mux.Post("/api/kill", s.handleGlobalKill)
+	s.mux.With(s.requireAdmin).Post("/api/kill", s.handleGlobalKill)
 	// POST: the export appends an audit entry (side effect) — GET would let a
 	// drive-by <img src> spam the append-only chain past the origin guard.
-	s.mux.Post("/export/compliance", s.handleComplianceExport)
-	s.mux.Post("/reports/confluence", s.handleConfluenceReport)
+	s.mux.With(s.requireAdmin).Post("/export/compliance", s.handleComplianceExport)
+	s.mux.With(s.requireAdmin).Post("/reports/confluence", s.handleConfluenceReport)
 
 	// v8 onboarding: credential settings + test connection (write-through .env,
 	// restart-required for workers).
 	s.mux.Get("/settings/integrations", s.handleSettings)
-	s.mux.Post("/settings/integrations/{name}", s.handleSettingsSave)
-	s.mux.Post("/settings/integrations/{name}/test", s.handleSettingsTest)
+	s.mux.With(s.requireAdmin).Post("/settings/integrations/{name}", s.handleSettingsSave)
+	s.mux.Post("/settings/integrations/{name}/test", s.handleSettingsTest) // viewer-ok: read-only test
 
 	// v8 onboarding wizard.
 	s.mux.Get("/welcome", s.handleWelcome)

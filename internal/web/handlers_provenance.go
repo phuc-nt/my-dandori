@@ -51,17 +51,17 @@ func (s *Server) handleRuleSimulate(w http.ResponseWriter, r *http.Request) {
 		formOr(r, "scope_type", "global"), r.FormValue("scope_id"), s.Cfg.LearnWindowDays)
 	if err != nil {
 		w.WriteHeader(400)
-		s.renderFragment(w, "rules", "sim_result", map[string]any{"Error": err.Error()})
+		s.renderFragment(w, r, "rules", "sim_result", map[string]any{"Error": err.Error()})
 		return
 	}
-	s.renderFragment(w, "rules", "sim_result", map[string]any{"Sim": res, "Window": s.Cfg.LearnWindowDays})
+	s.renderFragment(w, r, "rules", "sim_result", map[string]any{"Sim": res, "Window": s.Cfg.LearnWindowDays})
 }
 
 // handleRuleCreate persists a new rule from the builder form.
 func (s *Server) handleRuleCreate(w http.ResponseWriter, r *http.Request) {
 	_, err := govern.CreateRule(s.Store, r.FormValue("kind"), r.FormValue("pattern"),
 		r.FormValue("description"), formOr(r, "scope_type", "global"), r.FormValue("scope_id"),
-		r.FormValue("critical") == "1", s.Cfg.UserName)
+		r.FormValue("critical") == "1", s.actor(r))
 	if err != nil {
 		http.Error(w, err.Error(), 400)
 		return
@@ -76,7 +76,7 @@ func (s *Server) handleRuleDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", 400)
 		return
 	}
-	if err := govern.DeleteRule(s.Store, id, s.Cfg.UserName); err != nil {
+	if err := govern.DeleteRule(s.Store, id, s.actor(r)); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
@@ -101,6 +101,6 @@ func (s *Server) handleRuleToggle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.audit("toggle_rule", chi.URLParam(r, "id"), "")
+	s.audit(r, "toggle_rule", chi.URLParam(r, "id"), "")
 	redirectBack(w, r, "/rules")
 }

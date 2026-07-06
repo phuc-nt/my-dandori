@@ -1,6 +1,7 @@
 {{define "content"}}
 <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
   <h1 class="text-2xl font-bold">Agent: {{.M.AgentName}}</h1>
+  {{if .IsAdmin}}
   <form method="post" action="/agents/{{.M.AgentID}}/band" class="flex gap-2 items-center"
         onsubmit="return confirm('Change autonomy band? This changes what gets gated immediately.')">
     <span class="text-sm text-gray-500">Autonomy band</span>
@@ -10,6 +11,7 @@
     <input name="reason" placeholder="reason" class="border rounded px-2 py-1 text-sm w-36">
     <button class="bg-slate-700 text-white px-3 py-1 rounded text-sm">Set</button>
   </form>
+  {{end}}
 </div>
 <p class="text-gray-500 mb-4">Performance review over the last {{.M.WindowDays}} days · band: <b>{{.Band}}</b></p>
 

@@ -7,6 +7,7 @@ package web
 // both phases land (e.g. `s.registerPhase03Routes()` right after `s.routes()`
 // in server.go, or from routes() itself once merged).
 func (s *Server) registerPhase03Routes() {
-	s.mux.Post("/dash/export-sheets", s.handleExportSheets)
-	s.mux.Post("/dash/send-digest", s.handleSendDigest)
+	// admin (C4): both exfiltrate fleet data to an external service (Sheets/Slack).
+	s.mux.With(s.requireAdmin).Post("/dash/export-sheets", s.handleExportSheets)
+	s.mux.With(s.requireAdmin).Post("/dash/send-digest", s.handleSendDigest)
 }

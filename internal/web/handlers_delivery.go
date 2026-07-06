@@ -36,9 +36,9 @@ func (s *Server) handleExportSheets(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		data.Err = err.Error()
 	} else {
-		s.audit("sheets_export_triggered", "org", res)
+		s.audit(r, "sheets_export_triggered", "org", res)
 	}
-	s.renderFragment(w, "dash_org", "delivery_result", data)
+	s.renderFragment(w, r, "dash_org", "delivery_result", data)
 }
 
 // handleSendDigest triggers UG2b (POST /dash/send-digest). Recipients come
@@ -47,7 +47,7 @@ func (s *Server) handleSendDigest(w http.ResponseWriter, r *http.Request) {
 	days := s.Cfg.LearnWindowDays
 	digestData, err := learn.BuildDigestData(s.Store, days)
 	if err != nil {
-		s.renderFragment(w, "dash_org", "delivery_result", &deliveryResult{Page: "org", Err: err.Error()})
+		s.renderFragment(w, r, "dash_org", "delivery_result", &deliveryResult{Page: "org", Err: err.Error()})
 		return
 	}
 	guard := &integrations.Guard{Cfg: s.Cfg, St: s.Store}
@@ -63,7 +63,7 @@ func (s *Server) handleSendDigest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		data.Err = err.Error()
 	} else {
-		s.audit("digest_triggered", "org", "slack="+slackRes+" gmail="+gmailRes)
+		s.audit(r, "digest_triggered", "org", "slack="+slackRes+" gmail="+gmailRes)
 	}
-	s.renderFragment(w, "dash_org", "delivery_result", data)
+	s.renderFragment(w, r, "dash_org", "delivery_result", data)
 }

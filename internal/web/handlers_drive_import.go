@@ -125,7 +125,7 @@ func (s *Server) handleDriveImport(w http.ResponseWriter, r *http.Request) {
 		"layer": layer, "target": target, "content": res.FullText,
 		"doc_id": docID, "doc_name": docName, "modified_time": modified,
 	}
-	if _, err := observer.RequestAction(s.Store, "context-import", subject, summary, params, s.execActor(), "operator"); err != nil {
+	if _, err := observer.RequestAction(s.Store, "context-import", subject, summary, params, s.actor(r), "operator"); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -49,7 +49,7 @@ func (s *Server) handleContextSave(w http.ResponseWriter, r *http.Request) {
 	if layer == contexthub.LayerCompany {
 		_, err := observer.RequestAction(s.Store, "context-company-edit", "company:*",
 			"Sửa chính sách công ty (chờ duyệt)",
-			map[string]any{"content": content}, s.execActor(), "operator")
+			map[string]any{"content": content}, s.actor(r), "operator")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -58,7 +58,7 @@ func (s *Server) handleContextSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.hub().SaveContext(layer, target, content, s.execActor(), note); err != nil {
+	if _, err := s.hub().SaveContext(layer, target, content, s.actor(r), note); err != nil {
 		if err == contexthub.ErrSecretInContent {
 			s.contextBanner(w, err.Error())
 			return
@@ -66,7 +66,7 @@ func (s *Server) handleContextSave(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a := &govern.Audit{St: s.Store, Actor: s.execActor()}
+	a := &govern.Audit{St: s.Store, Actor: s.actor(r)}
 	_, _ = a.Append("context_saved", layer+":"+target, note)
 	w.Header().Set("HX-Refresh", "true")
 }
@@ -122,7 +122,7 @@ func (s *Server) handleContextRollback(w http.ResponseWriter, r *http.Request) {
 		}
 		_, err := observer.RequestAction(s.Store, "context-company-edit", "company:*",
 			"Khôi phục chính sách công ty về v"+strconv.Itoa(toN)+" (chờ duyệt)",
-			map[string]any{"content": old.Content}, s.execActor(), "operator")
+			map[string]any{"content": old.Content}, s.actor(r), "operator")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -131,11 +131,11 @@ func (s *Server) handleContextRollback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.hub().Rollback(layer, target, toN, s.execActor()); err != nil {
+	if _, err := s.hub().Rollback(layer, target, toN, s.actor(r)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a := &govern.Audit{St: s.Store, Actor: s.execActor()}
+	a := &govern.Audit{St: s.Store, Actor: s.actor(r)}
 	_, _ = a.Append("context_rolled_back", layer+":"+target, "→ v"+strconv.Itoa(toN))
 	w.Header().Set("HX-Refresh", "true")
 }
@@ -160,7 +160,7 @@ func (s *Server) handleContextPromote(w http.ResponseWriter, r *http.Request) {
 		map[string]any{
 			"source_layer": contexthub.LayerTeam, "source_target": teamID,
 			"source_version_n": head.VersionN,
-		}, s.execActor(), "operator")
+		}, s.actor(r), "operator")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -48,7 +48,7 @@ func (s *Server) handleExecApprove(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
-	won, err := govern.Decide(s.Store, id, true, s.execActor(), "duyệt từ bảng điều hành")
+	won, err := govern.Decide(s.Store, id, true, s.actor(r), "duyệt từ bảng điều hành")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -71,7 +71,7 @@ func (s *Server) handleExecDismiss(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a := &govern.Audit{St: s.Store, Actor: s.execActor()}
+	a := &govern.Audit{St: s.Store, Actor: s.actor(r)}
 	_, _ = a.Append("insight_dismissed", strconv.FormatInt(id, 10), "bỏ qua từ bảng điều hành")
 	s.renderInbox(w, r)
 }
@@ -83,12 +83,20 @@ func (s *Server) renderInbox(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.renderFragment(w, "exec_home", "inbox", map[string]any{"View": view})
+	s.renderFragment(w, r, "exec_home", "inbox", map[string]any{"View": view})
 }
 
-// execActor is the single-principal attribution (plan Trust model). The mode
-// cookie is a label, not proof of who clicked — so no per-human claim.
-func (s *Server) execActor() string { return s.Cfg.UserName + "@console" }
+// actor is the single request-aware principal source for every console-side
+// audit write. It reads the session principal set by sessionMiddleware (P1);
+// local-trust mode already stashes the "UserName@console" fallback there, so
+// this only needs its own fallback as a defensive backstop (e.g. a call site
+// that somehow runs outside the middleware chain in a test).
+func (s *Server) actor(r *http.Request) string {
+	if p := principalFrom(r); p != "" {
+		return p
+	}
+	return s.Cfg.UserName + "@console"
+}
 
 // ceoInboxCount is the number of CEO-surface items awaiting a decision —
 // shown as the sidebar "Cần duyệt" badge on every exec page.

@@ -31,7 +31,7 @@ func (s *Server) handleAssignmentSuggest(w http.ResponseWriter, r *http.Request)
 	task := r.URL.Query().Get("task")
 	data := map[string]any{"Page": "assign_suggest", "Task": task}
 	if task == "" {
-		s.renderFragment(w, "launch", "assignment_suggest", data)
+		s.renderFragment(w, r, "launch", "assignment_suggest", data)
 		return
 	}
 	suggestions, err := learn.SuggestAgents(s.Store, task, assignmentSuggestN)
@@ -48,5 +48,5 @@ func (s *Server) handleAssignmentSuggest(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	data["Suggestions"] = views
-	s.renderFragment(w, "launch", "assignment_suggest", data)
+	s.renderFragment(w, r, "launch", "assignment_suggest", data)
 }

@@ -24,7 +24,7 @@ func TestSpoolRedactsAndRelays(t *testing.T) {
 	defer ts.Close()
 
 	// Not connected yet — client points at a dead port.
-	cfg := &config.Config{ServerURL: "http://127.0.0.1:1", IngestToken: "secret-token"}
+	cfg := &config.Config{ServerURL: "http://127.0.0.1:1", IngestToken: "secret-token", AllowLegacyIngestToken: true}
 	c := NewClient(cfg)
 	rec := Record{Type: "event", SessionID: "s9", AgentName: "a", ULID: NewULID(),
 		Kind: "tool_use", Tool: "Bash",

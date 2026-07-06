@@ -51,5 +51,5 @@ func (s *Server) handleWelcomeFragment(w http.ResponseWriter, r *http.Request) {
 	if v.AllDone {
 		w.WriteHeader(286)
 	}
-	s.renderFragment(w, "welcome", "wizard_steps", map[string]any{"W": v})
+	s.renderFragment(w, r, "welcome", "wizard_steps", map[string]any{"W": v})
 }

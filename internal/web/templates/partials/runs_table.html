@@ -20,21 +20,21 @@
 
 {{define "run_row_actions"}}
 <div class="flex gap-2">
-  {{if eq .Status "running"}}
-  <form method="post" action="/runs/{{.ID}}/kill" onsubmit="return confirm('Kill this run?')">
+  {{if and (eq .Run.Status "running") .IsAdmin}}
+  <form method="post" action="/runs/{{.Run.ID}}/kill" onsubmit="return confirm('Kill this run?')">
     <button class="bg-red-600 text-white px-3 py-1 rounded text-sm">Kill run</button>
   </form>
   {{end}}
-  <form method="post" action="/runs/{{.ID}}/flag" class="flex gap-1">
+  <form method="post" action="/runs/{{.Run.ID}}/flag" class="flex gap-1">
     <input name="reason" placeholder="reason" class="border rounded px-2 py-1 text-sm">
     <button class="bg-amber-500 text-white px-3 py-1 rounded text-sm">Flag → Jira</button>
   </form>
-  <form method="post" action="/runs/{{.ID}}/task-key" class="flex gap-1">
-    <input name="task_key" value="{{.TaskKey}}" placeholder="SCRUM-…" class="border rounded px-2 py-1 text-sm w-28">
+  <form method="post" action="/runs/{{.Run.ID}}/task-key" class="flex gap-1">
+    <input name="task_key" value="{{.Run.TaskKey}}" placeholder="SCRUM-…" class="border rounded px-2 py-1 text-sm w-28">
     <button class="bg-slate-600 text-white px-3 py-1 rounded text-sm">Set task</button>
   </form>
-  {{if eq .Status "done"}}
-  <form method="post" action="/runs/{{.ID}}/playbook" class="flex gap-1">
+  {{if eq .Run.Status "done"}}
+  <form method="post" action="/runs/{{.Run.ID}}/playbook" class="flex gap-1">
     <input name="name" placeholder="playbook name" required class="border rounded px-2 py-1 text-sm w-36">
     <button class="bg-emerald-600 text-white px-3 py-1 rounded text-sm">Save as playbook</button>
   </form>

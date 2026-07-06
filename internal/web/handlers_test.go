@@ -1,12 +1,14 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/phuc-nt/dandori/internal/config"
 	"github.com/phuc-nt/dandori/internal/store"
@@ -81,6 +83,56 @@ func TestOriginGuard(t *testing.T) {
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusSeeOther {
 		t.Errorf("same-origin POST → %d, want 303", rec.Code)
+	}
+}
+
+// [C2 fix] a wildcard bind (Listen="0.0.0.0:PORT") must accept the machine's
+// own LAN Host, else the bootstrap page a real browser needs is unreachable
+// (see MEDIUM-2 in the P1 auth review). Skips if the runner has no
+// non-loopback interface at all (rare sandboxed CI).
+func TestOriginGuardAllowsConfiguredLANHostOnWildcardBind(t *testing.T) {
+	s := testServerWithListen(t, "0.0.0.0:4777")
+	ips := localNonLoopbackIPs()
+	if len(ips) == 0 {
+		t.Skip("no non-loopback interface available in this environment")
+	}
+	lanHost := ips[0] + ":4777"
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Host = lanHost
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Errorf("GET / with Host=%s → %d, want 200", lanHost, rec.Code)
+	}
+
+	// An arbitrary foreign Host must still be rejected — this is not an open
+	// allowlist.
+	req = httptest.NewRequest("GET", "/", nil)
+	req.Host = "evil.example.com"
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 403 {
+		t.Errorf("foreign host on wildcard bind → %d, want 403", rec.Code)
+	}
+}
+
+// [MEDIUM-1 fix] RunGC must be a well-behaved background goroutine: it
+// returns promptly once its context is cancelled instead of blocking forever
+// (session.GC/ratelimit.GC correctness is covered by their own unit tests).
+func TestRunGCStopsOnContextCancel(t *testing.T) {
+	s := testServer(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		s.RunGC(ctx)
+		close(done)
+	}()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunGC did not return after context cancel")
 	}
 }
 

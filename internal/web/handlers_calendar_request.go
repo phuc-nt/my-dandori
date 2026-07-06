@@ -74,7 +74,7 @@ func (s *Server) handleCalendarRequest(w http.ResponseWriter, r *http.Request) {
 		"title": title, "start": start, "end": end, "tz": tz,
 		"attendees": attendees, "send_updates": "none", "idem_key": idemKey,
 	}
-	if _, err := observer.RequestAction(s.Store, "calendar-event", "run:"+id, summary, params, s.execActor(), "operator"); err != nil {
+	if _, err := observer.RequestAction(s.Store, "calendar-event", "run:"+id, summary, params, s.actor(r), "operator"); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

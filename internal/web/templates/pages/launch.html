@@ -12,6 +12,7 @@
   claude: /Users/ban/.local/bin/claude</pre>
 </div>
 {{else}}
+{{if .IsAdmin}}
 <form class="bg-white border rounded-lg p-5 max-w-2xl"
       hx-post="{{if .RetryOf}}/runs/{{.RetryOf}}/retry{{else}}/launch{{end}}"
       hx-target="#launch-error" hx-swap="innerHTML">
@@ -37,6 +38,9 @@
     <div id="launch-error" class="flex-1"></div>
   </div>
 </form>
+{{else}}
+<p class="text-gray-400 text-sm">Chỉ admin được phóng phiên agent.</p>
+{{end}}
 
 <div class="max-w-2xl mt-4">
   <button type="button" class="text-sm text-blue-700 underline"

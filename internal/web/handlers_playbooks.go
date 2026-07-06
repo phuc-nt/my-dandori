@@ -54,12 +54,12 @@ func (s *Server) handlePlaybookCreate(w http.ResponseWriter, r *http.Request) {
 	_, err = s.Store.DB.Exec(`INSERT INTO playbooks(name, run_id, agent_id, task_key, prompt, model, cost_usd, top_files, notes, created_at, created_by)
 		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		name, runID, run.AgentID, run.TaskKey, redact.String(prompt), run.Model, run.CostUSD,
-		string(topFiles), redact.String(r.FormValue("notes")), store.Now(), s.Cfg.UserName)
+		string(topFiles), redact.String(r.FormValue("notes")), store.Now(), s.actor(r))
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.audit("save_playbook", runID, name)
+	s.audit(r, "save_playbook", runID, name)
 	http.Redirect(w, r, "/playbooks", http.StatusSeeOther)
 }
 
@@ -136,7 +136,7 @@ func (s *Server) handlePlaybookAdopt(w http.ResponseWriter, r *http.Request) {
 	}
 	operator := r.FormValue("operator")
 	if operator == "" {
-		operator = s.Cfg.UserName + "@console"
+		operator = s.actor(r)
 	}
 	if _, err := learn.RecordAdoption(s.Store, id, operator, "", s.Cfg.LearnWindowDays); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -1,0 +1,37 @@
+{{/* Standalone page — deliberately does NOT use {{template "content"}} /
+     layout.html (no sidebar chrome makes sense before a session exists).
+     Rendered directly via ExecuteTemplate(w, "login_page", ...) in
+     handlers_auth.go, bypassing the normal render() layout wrapping. */}}
+{{define "login_page"}}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Đăng nhập — Dandori</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen flex items-center justify-center">
+  <div class="w-full max-w-sm">
+    <div class="text-center mb-6">
+      <div class="text-3xl font-bold">⛩ Dandori</div>
+      <p class="text-gray-500 text-sm mt-1">Đăng nhập console</p>
+    </div>
+    <form method="post" action="/login" class="bg-white border rounded-lg p-6 space-y-4">
+      {{if .Error}}
+      <div class="bg-red-50 text-red-700 text-sm rounded px-3 py-2">{{.Error}}</div>
+      {{end}}
+      <label class="block text-sm">
+        Tên đăng nhập
+        <input name="username" required autofocus class="mt-1 border rounded px-3 py-2 w-full">
+      </label>
+      <label class="block text-sm">
+        Mật khẩu
+        <input name="password" type="password" required class="mt-1 border rounded px-3 py-2 w-full">
+      </label>
+      <button class="w-full bg-slate-800 hover:bg-slate-700 text-white rounded px-4 py-2 font-medium">Đăng nhập</button>
+    </form>
+  </div>
+</body>
+</html>
+{{end}}

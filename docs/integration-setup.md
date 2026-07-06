@@ -128,6 +128,33 @@ dandori init            # merge hook entries vào .claude/settings.json (idempot
 
 Không cài hook → guardrail không enforce, git-delta = 0, end-time kém chính xác (rơi về watcher). Nếu bảng density thấy `head_before` NULL và 0 guardrail event, gần như chắc chắn là **chưa cài hook** — không phải bug.
 
+## 3c. Login & operator account (v10)
+
+Từ v10, console yêu cầu login ngay khi đã tồn tại ≥1 account. Trước đó (bind loopback + chưa từng tạo account nào), console vẫn vào thẳng như v9 (local-trust) — không cần làm bước này để chạy dev một mình.
+
+**Tạo operator đầu tiên (bootstrap):**
+
+```bash
+dandori operator add alice --role admin     # username == id chính tắc (H3)
+# nhập password khi được hỏi 2 lần (argon2id hash, không lưu plaintext)
+```
+
+Từ lúc này mọi request vào console không có session cookie hợp lệ → `302 /login`. Đăng nhập tại `/login` bằng username/password vừa tạo.
+
+**Cấp token ingest cho máy dev (central mode):**
+
+```bash
+dandori token create alice --name laptop-alice
+# in ra plaintext MỘT LẦN DUY NHẤT — copy ngay (vào connect.yaml của máy đó), không xem lại được sau
+dandori token list alice                    # xem token đã cấp (hash + last_used, không có plaintext)
+dandori token revoke <id-hoặc-prefix>       # thu hồi khi mất máy / nghỉ việc
+```
+
+- **Mất token / lộ token:** `dandori token revoke <prefix-in-list>` rồi `dandori token create alice --name ...` lại — token cũ 401 ngay lập tức (không cần đợi restart).
+- **Off-board operator:** `dandori operator disable alice` vô hiệu hoá đăng nhập VÀ mọi token ingest của operator đó cùng lúc (không cần revoke token riêng).
+- Console vẫn nhận **legacy shared token** (`IngestToken` cũ) song song trong giai đoạn chuyển đổi (`allow_legacy_ingest_token: true` mặc định) — máy chưa kịp cấp token riêng vẫn ghi được, nhưng attribute về `legacy-shared@ingest` (không phải người cụ thể).
+- **Bind ra ngoài loopback** (LAN/`0.0.0.0`) sau khi đã có account: cookie session giữ `Secure` — bắt buộc phục vụ qua HTTPS thật (reverse-proxy/tunnel), không tự tắt `Secure` cho HTTP thường. Chưa có TLS thì chỉ bind loopback + SSH/VPN tunnel vào máy chạy `dandori serve`.
+
 ## 4. An toàn / lưu ý
 
 - **`.env` gitignored** — không commit value thật. `.gitignore` đã set (`.env`, `.env.*`).

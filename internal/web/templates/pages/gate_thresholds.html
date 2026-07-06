@@ -8,6 +8,7 @@
 {{end}}
 
 {{define "gate_thresholds_form"}}
+{{if .IsAdmin}}
 <form method="post" action="/gate-thresholds" hx-post="/gate-thresholds" hx-target="#gate-thresholds-form" hx-swap="innerHTML"
       class="bg-white border rounded-lg p-4 flex gap-4 items-end flex-wrap max-w-xl">
   <label class="text-sm">Hạng tối thiểu (A-F)<br>
@@ -18,4 +19,7 @@
            required class="border rounded px-2 py-1 w-24"></label>
   <button class="bg-slate-700 text-white px-4 py-2 rounded">Lưu ngưỡng</button>
 </form>
+{{else}}
+<p class="text-gray-400 text-sm">Chỉ admin được sửa ngưỡng chất lượng.</p>
+{{end}}
 {{end}}

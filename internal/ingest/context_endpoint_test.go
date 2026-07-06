@@ -81,7 +81,7 @@ func TestContextClientStaleOnServerError(t *testing.T) {
 	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"context": "GOOD", "provenance": map[string]int{"company": 1}})
 	}))
-	cfg := &config.Config{ServerURL: good.URL, IngestToken: "t"}
+	cfg := &config.Config{ServerURL: good.URL, IngestToken: "t", AllowLegacyIngestToken: true}
 	c := NewClient(cfg)
 	if txt, _ := c.Context("bot"); txt != "GOOD" {
 		t.Fatalf("prime: %q", txt)

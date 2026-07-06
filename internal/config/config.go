@@ -49,9 +49,9 @@ type Config struct {
 	// flag is announced (default 3).
 	PublicBaseURL       string `yaml:"public_base_url"`
 	NotifyFlagStaleDays int    `yaml:"notify_flag_stale_days"`
-	CalibrateWithHumans  bool     `yaml:"calibrate_with_humans"`
-	OpenRouterKey        string   `yaml:"-"`
-	OpenRouterModel      string   `yaml:"-"`
+	CalibrateWithHumans bool   `yaml:"calibrate_with_humans"`
+	OpenRouterKey       string `yaml:"-"`
+	OpenRouterModel     string `yaml:"-"`
 	// Central mode. Client side: ServerURL+IngestToken come from the 0600
 	// connect file (~/.dandori/connect.yaml) or env. Server side:
 	// IngestListen is where the token-authed ingest listener binds; the
@@ -59,6 +59,12 @@ type Config struct {
 	ServerURL    string `yaml:"-"`
 	IngestToken  string `yaml:"-"`
 	IngestListen string `yaml:"ingest_listen"`
+	// AllowLegacyIngestToken keeps the pre-v10 shared Cfg.IngestToken accepted
+	// by the ingest listener during the v10 dual-accept window (default true).
+	// Runs authenticated this way attribute to the fixed principal
+	// "legacy-shared@ingest" — never to a client-supplied header (H1). Set
+	// false to force per-operator tokens only; the shared token then 401s.
+	AllowLegacyIngestToken bool `yaml:"allow_legacy_ingest_token"`
 	// CEO chatbot caps.
 	ChatMaxTurns         int                `yaml:"chat_max_turns"`
 	ChatDailyTokenBudget int                `yaml:"chat_daily_token_budget"`
@@ -94,24 +100,25 @@ type Config struct {
 func defaults() *Config {
 	home, _ := os.UserHomeDir()
 	return &Config{
-		DBPath:                filepath.Join(home, ".dandori", "dandori.db"),
-		Listen:                "127.0.0.1:4777",
-		UserName:              currentUser(),
-		DryRun:                true,
-		Budget:                Budget{GlobalMonthlyUSD: 50, WarnPcts: []int{50, 75, 90}},
-		GateWaitSeconds:       30,
-		ApprovalTTLMinutes:    60,
-		WatchIntervalSeconds:  60,
-		ProjectsDir:           filepath.Join(home, ".claude", "projects"),
-		LearnWindowDays:       30,
-		CalibrateWithHumans:   true,
-		IngestListen:          "0.0.0.0:4778",
-		ChatMaxTurns:          6,
-		ChatDailyTokenBudget:  200_000,
-		GateChecks:            []string{"go vet ./...", "go test ./..."},
-		Pricing:               defaultPricing(),
-		Integrations:          Integrations{JiraProject: "SCRUM", SlackChannel: ""},
-		MaxConcurrentLaunches: 4,
+		DBPath:                 filepath.Join(home, ".dandori", "dandori.db"),
+		Listen:                 "127.0.0.1:4777",
+		UserName:               currentUser(),
+		DryRun:                 true,
+		Budget:                 Budget{GlobalMonthlyUSD: 50, WarnPcts: []int{50, 75, 90}},
+		GateWaitSeconds:        30,
+		ApprovalTTLMinutes:     60,
+		WatchIntervalSeconds:   60,
+		ProjectsDir:            filepath.Join(home, ".claude", "projects"),
+		LearnWindowDays:        30,
+		CalibrateWithHumans:    true,
+		IngestListen:           "0.0.0.0:4778",
+		AllowLegacyIngestToken: true,
+		ChatMaxTurns:           6,
+		ChatDailyTokenBudget:   200_000,
+		GateChecks:             []string{"go vet ./...", "go test ./..."},
+		Pricing:                defaultPricing(),
+		Integrations:           Integrations{JiraProject: "SCRUM", SlackChannel: ""},
+		MaxConcurrentLaunches:  4,
 	}
 }
 
@@ -201,6 +208,9 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("DANDORI_INGEST_LISTEN"); v != "" {
 		c.IngestListen = v
+	}
+	if v := os.Getenv("DANDORI_ALLOW_LEGACY_INGEST_TOKEN"); v != "" {
+		c.AllowLegacyIngestToken = v != "false" && v != "0"
 	}
 	if v := os.Getenv("SLACK_APPROVERS"); v != "" {
 		c.Approvers = nil

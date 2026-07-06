@@ -19,19 +19,32 @@ func testServer(t *testing.T) (*Server, *store.Store) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	cfg := &config.Config{IngestToken: "secret-token"}
+	cfg := &config.Config{IngestToken: "secret-token", AllowLegacyIngestToken: true}
 	cfg.Budget.GlobalMonthlyUSD = 50
 	return NewServer(cfg, st), st
 }
 
 func postBatch(t *testing.T, h http.Handler, token string, batch Batch) *httptest.ResponseRecorder {
 	t.Helper()
-	b, _ := json.Marshal(batch)
-	req := httptest.NewRequest(http.MethodPost, "/ingest/events", bytes.NewReader(b))
+	req := jsonPostRequest(t, batch)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	req.Header.Set("X-Dandori-Principal", "alice@mac")
+	req.Header.Set("X-Dandori-Principal-Hint", "alice@mac") // diagnostic only — server derives principal from the token
+	return doRequest(h, req)
+}
+
+// jsonPostRequest builds a bare POST /ingest/events request with no auth
+// header set yet — callers attach Authorization themselves.
+func jsonPostRequest(t *testing.T, batch Batch) *http.Request {
+	t.Helper()
+	b, _ := json.Marshal(batch)
+	req := httptest.NewRequest(http.MethodPost, "/ingest/events", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+func doRequest(h http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
 	return w
@@ -108,8 +121,11 @@ func TestIngestIdempotentReplay(t *testing.T) {
 	if cost != 0.5 || status != "done" {
 		t.Errorf("finalize: cost=%v status=%s", cost, status)
 	}
-	if operator != "alice@mac" {
-		t.Errorf("operator from principal header: %q", operator)
+	// [H1] Legacy shared-token requests attribute to the fixed principal,
+	// NEVER to the client-supplied X-Dandori-Principal-Hint header — a
+	// spoofed header here must not change attribution.
+	if operator != legacyPrincipal {
+		t.Errorf("operator = %q, want fixed legacy principal %q (header must not be trusted)", operator, legacyPrincipal)
 	}
 	// Steering + prompt proxy landed as SET-semantics numeric events.
 	var msgs, words string
