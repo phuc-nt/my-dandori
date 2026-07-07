@@ -11,6 +11,12 @@ import (
 // sandboxAllowlist are prefixes any run may touch besides its own cwd.
 var sandboxAllowlist = []string{"/tmp/", "/private/tmp/", "/var/folders/", "/dev/null"}
 
+// homeAllowlistDirs are $HOME-relative prefixes any run may touch: the agent
+// harness keeps per-project memory/state under ~/.claude/projects/. This is
+// deliberately NOT all of ~/.claude — settings.json and hooks/ are the
+// guardrail wiring itself; a run that can rewrite those can disarm the gates.
+var homeAllowlistDirs = []string{".claude/projects/"}
+
 // ExtractToolCall builds a ToolCall from a raw tool_input: pulls the Bash
 // command and any file paths (explicit file_path fields, plus absolute-path
 // tokens inside Bash commands — heuristic, documented limitation).
@@ -66,7 +72,7 @@ func (e *Engine) checkSandbox(tc ToolCall) (Decision, bool) {
 		if !filepath.IsAbs(abs) {
 			continue // relative paths resolve inside cwd
 		}
-		if strings.HasPrefix(abs, cwd+string(filepath.Separator)) || abs == cwd || allowlisted(abs) {
+		if strings.HasPrefix(abs, cwd+string(filepath.Separator)) || abs == cwd || allowlisted(abs) || homeAllowlisted(abs, home) {
 			continue
 		}
 		return Decision{Deny, fmt.Sprintf("[dandori G2] path outside run scope: %s (scope: %s)", p, tc.CWD)}, true
@@ -77,6 +83,19 @@ func (e *Engine) checkSandbox(tc ToolCall) (Decision, bool) {
 func allowlisted(abs string) bool {
 	for _, pre := range sandboxAllowlist {
 		if strings.HasPrefix(abs, pre) || abs == strings.TrimSuffix(pre, "/") {
+			return true
+		}
+	}
+	return false
+}
+
+func homeAllowlisted(abs, home string) bool {
+	if home == "" {
+		return false
+	}
+	for _, dir := range homeAllowlistDirs {
+		pre := filepath.Join(home, dir) + string(filepath.Separator)
+		if strings.HasPrefix(abs, pre) {
 			return true
 		}
 	}

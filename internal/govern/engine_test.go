@@ -84,6 +84,23 @@ func TestSandboxWriteOutsideCwd(t *testing.T) {
 	if d := e.Evaluate(context.Background(), tc); d.Verdict != Allow {
 		t.Errorf("allowlisted /tmp must allow, got %s: %s", d.Verdict, d.Reason)
 	}
+
+	// Harness memory dir under ~/.claude/projects/ is writable from any run…
+	input, _ = json.Marshal(map[string]string{"file_path": "~/.claude/projects/-work-proj/memory/note.md"})
+	tc = ExtractToolCall("r2", "a1", "proj", "/work/proj", "Write", input)
+	if d := e.Evaluate(context.Background(), tc); d.Verdict != Allow {
+		t.Errorf("memory dir must allow, got %s: %s", d.Verdict, d.Reason)
+	}
+	// …but the rest of ~/.claude (settings.json, hooks/) is the guardrail
+	// wiring itself and stays out of scope, including via ../ traversal.
+	for _, p := range []string{"~/.claude/settings.json", "~/.claude/hooks/x.cjs",
+		"~/.claude/projects/../settings.json"} {
+		input, _ = json.Marshal(map[string]string{"file_path": p})
+		tc = ExtractToolCall("r2", "a1", "proj", "/work/proj", "Write", input)
+		if d := e.Evaluate(context.Background(), tc); d.Verdict != Deny {
+			t.Errorf("%s must stay denied, got %s", p, d.Verdict)
+		}
+	}
 }
 
 func TestBudgetBreaker(t *testing.T) {
