@@ -16,6 +16,12 @@
     /* htmx loading indicator: hidden until a request is in flight */
     .htmx-indicator{display:none}
     .htmx-request .htmx-indicator,.htmx-request.htmx-indicator{display:flex}
+    html{scroll-behavior:smooth}
+    /* flash a target when navigated to via anchor (e.g. "Cần duyệt" → #exec-inbox)
+       so clicking gives visible feedback even when already on the page */
+    :target{animation:tgtflash 1.2s ease-out}
+    @keyframes tgtflash{0%{background:#fef3c7}60%{background:#fef3c7}100%{background:transparent}}
+    :target{scroll-margin-top:1rem}
     /* rendered markdown in chat replies (headings, tables, lists, code) */
     .chat-md>*:first-child{margin-top:0}.chat-md>*:last-child{margin-bottom:0}
     .chat-md h1,.chat-md h2,.chat-md h3{font-weight:600;margin:.6em 0 .3em;line-height:1.25}
@@ -44,7 +50,7 @@
     <nav class="flex-1 py-3 text-sm">
       {{template "navlink" navctx .Page "exec_home" "/" "🏠" "Trang chủ"}}
       {{template "navlink" navctx .Page "chat" "/chat" "💬" "Trợ lý"}}
-      {{template "navlink_badge" navctx4 .Page "reviews" "/#exec-inbox" "✅" "Cần duyệt" .InboxCount}}
+      {{template "navlink_badge" navctx4 .Page "reviews" "/reviews" "✅" "Cần duyệt" .InboxCount}}
     </nav>
     <div class="p-3 border-t border-slate-800 space-y-2">
       <div class="text-xs text-slate-400">Đang xem: <b class="text-slate-200">Điều hành</b></div>
