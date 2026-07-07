@@ -16,7 +16,7 @@ type OutcomeStat struct {
 	Done        int
 	Failed      int
 	Killed      int
-	Running     int    // excluded from cost-per-done denominator
+	Running     int // excluded from cost-per-done denominator
 	TotalCost   float64
 	CostPerDone float64 // TotalCost / Done; 0 when Done==0
 }

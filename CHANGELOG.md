@@ -1,0 +1,52 @@
+# Changelog
+
+Mọi thay đổi đáng kể của Dandori. Định dạng theo [Keep a Changelog](https://keepachangelog.com/);
+mỗi mốc là một "version" nội bộ (một sprint có kế hoạch + red-team + review). Ngày theo `YYMMDD`.
+
+## [v13] — Kit & Mining — 260707
+
+- **Mining queue** (`/knowledge/mining`): 4 tín hiệu SQL on-demand (corrective-steering-rồi-done, fail→retry→success, guardrail-block-rồi-done, cost-outlier) surface "run đáng đọc". Không phải leaderboard, dismiss chỉ ẩn khỏi danh sách đọc.
+- **Import** (`dandori knowledge import`): nâng memory/journal `.md` thành context unit, preview + khử trùng lặp per-file.
+- **AI-draft**: soạn nháp practice từ bằng chứng DB đã che secret (không đọc raw transcript), form sửa được, nhãn `origin=ai-draft` suốt vòng đời, single-flight chống spam budget, fail-open.
+- **Agent-kit** (`kind=kit`): đóng gói trọn bộ `.claude/` chuẩn với manifest Merkle-lite; `dandori kit pull` verify hash 3 lớp against audit chain, path-safety variable-depth symlink-safe, deny-list-first (`hooks/scripts/settings` không bao giờ distribute).
+- Cột `origin` truy nguồn tri thức; provenance run-id bị forge → từ chối.
+
+## [v12] — Knowledge Flow — 260707
+
+- Vòng tri thức cá nhân→tổ chức→cá nhân: bảng `knowledge_units` (state machine, 4 kind), detector nominate-only (Wilson CI, ≥10 mẫu), review **web-only + full-body render** (chống duyệt-mù qua Slack emoji), publish qua approval, skill registry pull-only hash-pinned, mandate = compliance-visibility, đo adoption installed-vs-active với caveat hồi-quy-về-trung-bình.
+
+## [v11] — Insight Expansion — 260707
+
+- `/insights` mở rộng: Wilson CI mọi nơi (thay badge im lặng), context-version ROI, shadow-work, guardrail effectiveness ledger, time-horizon curve, Pareto spend, steering economics, approval funnel. Descriptive-only, per-section degrade, không faked-zero.
+
+## [v10] — Identity & RBAC — 260707
+
+- Đăng nhập console (argon2id, session SQLite), principal thật thay `@console` trong mọi audit entry, per-operator ingest token (bỏ header tự-khai spoofable), 2 role admin/viewer gate 29 write route. Disable admin cuối → khoá console (không rơi về no-auth).
+
+## [v9] — Capture-gap & Dense Insight — 260706
+
+- Vá gốc capture (watcher end-time, task_key linkage, git-delta, steering text) rồi ship insight trên data đã dense. Phân biệt honest-zero vs capture-gap.
+
+## [v8] — Onboarding & Executive UX — 260705
+
+- Wizard `/welcome`, credential UI `/settings/integrations` + healthz, thông báo chủ động Slack, trang `/risk`, ước lượng tác động trên approval card.
+
+## [v7] — Write-back & Vision Closeout — 260704
+
+- Ghi ra Jira/GitHub/Calendar/Sheets/Gmail/Drive (không chỉ đọc) — mọi write qua RequestAction → duyệt → applier. Post-action check, gate threshold UI, agent assignment, saved views, wallboard.
+
+## [v6] — Commander — 260704
+
+- Phóng & điều khiển agent-run trực tiếp từ console (launch/kill/retry/bulk), chống RCE (không shell, binary + cwd allowlist), kill giết process thật, live log poll.
+
+## [v5] — Context Hub — 260703
+
+- Context phân tầng Company→Team→Agent, version bất biến + diff + rollback, promote approval-gated, effective-context preview, tiêm qua SessionStart.
+
+## [v2–v4] — 260702
+
+- v2: vượt legacy (multi-runtime adapter, run comparison, cost-spike explain, revert detector). v3: đóng vòng vision (closed loop, trend, knowledge capture, rule builder, policy simulator). v4: executive layer (compliance export, escalation).
+
+## [MVP] — Harness Console — 260702
+
+- Ba trụ nền: CAPTURE (auto-capture qua hook, cost attribution, unified schema, watcher) · GOVERN (block/sandbox/budget/gate/kill, quality gate, approval workflow, audit hash-chain) · LEARN (grade A–F calibrate fleet, ROI, provenance, leaderboard). Console 3 tầng + CLI song song.

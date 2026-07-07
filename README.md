@@ -1,5 +1,9 @@
 # Dandori
 
+[![CI](https://github.com/phuc-nt/my-dandori/actions/workflows/ci.yml/badge.svg)](https://github.com/phuc-nt/my-dandori/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8.svg)](go.mod)
+
 **Outer harness quản trị đội AI** — một binary Go bọc ngoài Claude Code, biến đám agent chạy lẻ thành đội ngũ được quản trị. Ba trụ: **CAPTURE** (ghi mọi run) · **GOVERN** (guardrail realtime + audit) · **LEARN** (grade A–F, ROI, leaderboard).
 
 Vision đầy đủ: [docs/01-product-vision.md](docs/01-product-vision.md) · Tính năng: [docs/03-features.md](docs/03-features.md) · Ghi chú hiện thực: [docs/04-implementation-notes.md](docs/04-implementation-notes.md)

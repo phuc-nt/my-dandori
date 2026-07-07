@@ -89,7 +89,7 @@ var tmplFuncs = template.FuncMap{
 	"usd":    func(v float64) string { return fmt.Sprintf("$%.2f", v) },
 	"pct":    func(v float64) string { return fmt.Sprintf("%.0f%%", v) },
 	"mul100": func(v float64) float64 { return v * 100 },
-	"score": func(v float64) string { return fmt.Sprintf("%.0f", v) },
+	"score":  func(v float64) string { return fmt.Sprintf("%.0f", v) },
 	"short": func(s string) string {
 		if len(s) > 12 {
 			return s[:12]

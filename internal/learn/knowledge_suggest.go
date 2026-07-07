@@ -28,12 +28,12 @@ type UnitSuggestion struct {
 	LayerTarget string
 
 	// Live-recomputed present/absent stats (F11) — never the stored snapshot.
-	NPresent, NAbsent       int
-	DonePresent, DoneAbsent float64
+	NPresent, NAbsent        int
+	DonePresent, DoneAbsent  float64
 	CIPresentLo, CIPresentHi int
 	CIAbsentLo, CIAbsentHi   int
 
-	Delta         float64 // DonePresent - DoneAbsent, the ranking signal (not a score to compare people)
+	Delta          float64 // DonePresent - DoneAbsent, the ranking signal (not a score to compare people)
 	KeywordOverlap int
 }
 

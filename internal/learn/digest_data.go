@@ -86,7 +86,7 @@ func KnowledgePublishedThisWeek(st *store.Store, days int) (count int, titles []
 	rows, err := st.Read().Query(`
 		SELECT u.title FROM knowledge_transitions t
 		JOIN knowledge_units u ON u.id = t.unit_id
-		WHERE t.to_state = 'published'`+insightWindowClauseCol("t.at", days)+`
+		WHERE t.to_state = 'published'` + insightWindowClauseCol("t.at", days) + `
 		ORDER BY t.at DESC`)
 	if err != nil {
 		return 0, nil, err

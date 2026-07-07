@@ -207,8 +207,8 @@ func (s *Server) routes() {
 	s.mux.Get("/runs/{id}/status-fragment", s.handleRunStatusFragment)
 	s.mux.Get("/runs/{id}/log-tail", s.handleRunLogTail)
 	s.mux.With(s.requireAdmin).Post("/runs/{id}/kill", s.handleRunKill)
-	s.mux.Post("/runs/{id}/task-key", s.handleRunTaskKey) // viewer-ok: metadata annotate
-	s.mux.Post("/runs/{id}/flag", s.handleRunFlag)         // viewer-ok: signal (like reaction)
+	s.mux.Post("/runs/{id}/task-key", s.handleRunTaskKey)     // viewer-ok: metadata annotate
+	s.mux.Post("/runs/{id}/flag", s.handleRunFlag)            // viewer-ok: signal (like reaction)
 	s.mux.Post("/runs/{id}/playbook", s.handlePlaybookCreate) // viewer-ok: knowledge capture
 	s.mux.Get("/playbooks", s.handlePlaybooks)
 	s.mux.Post("/playbooks/{id}/adopt", s.handlePlaybookAdopt) // viewer-ok: metric

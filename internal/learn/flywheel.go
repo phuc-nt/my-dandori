@@ -373,8 +373,8 @@ func NominateRetireProposals(st *store.Store) (int, error) {
 			w.title, (w.before-w.after)*100)
 		unitID := w.id
 		_, err := NominateUnit(st, NominateParams{
-			Kind: w.kind,
-			Name: name,
+			Kind:  w.kind,
+			Name:  name,
 			Title: title,
 			// M2: RefKindRetireTarget (not w.kind) marks this draft as
 			// signal-only — RequestPublish refuses to gate a publish approval

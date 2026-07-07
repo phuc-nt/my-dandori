@@ -10,6 +10,7 @@ import (
 //     shared office NAT means many humans share one IP — not sufficient alone.
 //   - per-account failure counter: locks out repeated wrong-password attempts
 //     against one username regardless of which IP they come from.
+//
 // Both are in-memory (volatile across restarts) — acceptable for a small
 // team login endpoint; no persistence requirement.
 type RateLimiter struct {

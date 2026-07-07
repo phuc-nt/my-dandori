@@ -118,7 +118,7 @@ func TestE2EMiningDraftNominateLoop(t *testing.T) {
 
 	nominate := postFormAs(t, s, cookie, "/knowledge/nominate", url.Values{
 		"kind": {"context"}, "name": {"mined-practice-1"}, "title": {"Mined practice"},
-		"body": {"Nội dung do AI soạn, đã sửa bởi người duyệt."},
+		"body":   {"Nội dung do AI soạn, đã sửa bởi người duyệt."},
 		"origin": {"ai-draft"}, "origin_model": {"test/model"},
 		"provenance_run_ids": {"mine-loop-1"},
 	})
