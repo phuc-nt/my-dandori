@@ -111,9 +111,38 @@ func (h *Hub) saveOnce(layer, targetID, content, author, note string) (int, erro
 		return 0, err
 	}
 	defer tx.Rollback()
+	n, err := saveContextTx(tx, layer, targetID, content, author, note)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
 
+// SaveContextTx is the Tx-scoped twin of SaveContext, for callers that must
+// fold a context write into a larger atomic sequence sharing one connection
+// (H2 — the DB pool is single-connection, so a nested Begin() inside an
+// already-open tx would deadlock). No retry-on-UNIQUE-race here: the caller
+// owns the tx and decides whether to retry the whole sequence, not just this
+// one write. Validation mirrors SaveContext exactly.
+func SaveContextTx(tx *sql.Tx, layer, targetID, content, author, note string) (int, error) {
+	if !validLayer(layer) {
+		return 0, fmt.Errorf("unknown layer %q", layer)
+	}
+	if redact.String(content) != content {
+		return 0, ErrSecretInContent
+	}
+	if layer == LayerCompany {
+		targetID = CompanyTarget
+	}
+	return saveContextTx(tx, layer, targetID, content, author, note)
+}
+
+func saveContextTx(tx *sql.Tx, layer, targetID, content, author, note string) (int, error) {
 	var ctxID int64
-	err = tx.QueryRow(`SELECT id FROM contexts WHERE layer = ? AND target_id = ?`, layer, targetID).Scan(&ctxID)
+	err := tx.QueryRow(`SELECT id FROM contexts WHERE layer = ? AND target_id = ?`, layer, targetID).Scan(&ctxID)
 	if err == sql.ErrNoRows {
 		res, e := tx.Exec(`INSERT INTO contexts(layer, target_id, created_at, updated_at) VALUES(?, ?, ?, ?)`,
 			layer, targetID, store.Now(), store.Now())
@@ -142,9 +171,6 @@ func (h *Hub) saveOnce(layer, targetID, content, author, note string) (int, erro
 	verID, _ := res.LastInsertId()
 	if _, err := tx.Exec(`INSERT INTO context_heads(context_id, version_id) VALUES(?, ?)
 		ON CONFLICT(context_id) DO UPDATE SET version_id = excluded.version_id`, ctxID, verID); err != nil {
-		return 0, err
-	}
-	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 	return nextN, nil

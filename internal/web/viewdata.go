@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -43,6 +44,24 @@ type ApprovalRow struct {
 	// by this agent), nil when there is not enough history. Populated only for
 	// pending items on the reviews/exec inbox.
 	Impact *learn.Impact
+	// Knowledge* carries the FULL pinned evidence for observer:knowledge-*
+	// approvals (F1 CRITICAL) — the decide surface (/reviews) must render the
+	// exact body+hash the reviewer is approving, never a truncated summary,
+	// regardless of what the live knowledge_units row looks like by the time
+	// this renders. Empty for every other action type.
+	KnowledgeKind, KnowledgeName, KnowledgeBody, KnowledgeContentHash string
+	KnowledgeLayer, KnowledgeLayerTarget                              string
+	// KnowledgeRuleIntent (H1) is the pinned rule lifecycle effect
+	// ("enable"/"retire"/"scope-up") — must render PROMINENTLY distinct from
+	// a plain publish so an admin approving "gỡ rule" can see that is exactly
+	// what they are about to execute, not a toggle-on.
+	KnowledgeRuleIntent string
+	// KnowledgeUnitID + KnowledgeCI (M4): link to the full /knowledge/unit/{id}
+	// detail page and a compact CI/stats line, read from the unit row (the
+	// evidence blob doesn't carry stats — the unit row is the single stats
+	// source of truth, same one /knowledge/unit/{id} itself reads).
+	KnowledgeUnitID int64
+	KnowledgeCI     string
 }
 
 // BudgetRow shows a budget scope with its live spend and end-of-month
@@ -148,6 +167,9 @@ func (s *Server) queryApprovals(status string) ([]ApprovalRow, error) {
 		if strings.HasPrefix(out[i].Action, "observer:context-import:") {
 			s.loadImportContent(&out[i])
 		}
+		if strings.HasPrefix(out[i].Action, "observer:knowledge-") {
+			s.loadKnowledgeEvidence(&out[i])
+		}
 		// Advisory impact estimate for pending items (the ones a human is about
 		// to decide). History-based, cached; skipped for decided rows.
 		if out[i].Status == "pending" && out[i].RunID != "" {
@@ -189,6 +211,58 @@ func (s *Server) loadImportContent(a *ApprovalRow) {
 	}
 	a.ImportContent = ev.Content
 	a.ImportRunes = len([]rune(ev.Content))
+}
+
+// loadKnowledgeEvidence fills Knowledge* for an observer:knowledge-* approval
+// (F1 CRITICAL) by reading the linked insight's evidence — the exact pinned
+// params RequestPublish/Mandate/Retire wrote (learn.unitActionParams JSON
+// shape). This is the ONLY render source for the decide surface: /reviews
+// must show the FULL body+hash a reviewer is approving, not a summary, and
+// not the live knowledge_units row (which may have since changed lineage,
+// though content itself is immutable post-approve). Best-effort: a lookup
+// failure leaves the Knowledge* fields empty rather than failing the whole
+// queue render.
+func (s *Server) loadKnowledgeEvidence(a *ApprovalRow) {
+	var evidence string
+	if err := s.Store.DB.QueryRow(
+		`SELECT evidence FROM insights WHERE approval_id = ?`, a.ID,
+	).Scan(&evidence); err != nil {
+		return
+	}
+	var ev struct {
+		UnitID      int64  `json:"unit_id"`
+		Kind        string `json:"kind"`
+		Name        string `json:"name"`
+		Body        string `json:"body"`
+		ContentHash string `json:"content_hash"`
+		Layer       string `json:"layer"`
+		LayerTarget string `json:"layer_target"`
+		RuleIntent  string `json:"rule_intent"`
+	}
+	if err := json.Unmarshal([]byte(evidence), &ev); err != nil {
+		return
+	}
+	a.KnowledgeUnitID = ev.UnitID
+	a.KnowledgeKind = ev.Kind
+	a.KnowledgeName = ev.Name
+	a.KnowledgeBody = ev.Body
+	a.KnowledgeContentHash = ev.ContentHash
+	a.KnowledgeLayer = ev.Layer
+	a.KnowledgeLayerTarget = ev.LayerTarget
+	a.KnowledgeRuleIntent = ev.RuleIntent
+	// M4: CI/stats line, read from the live unit row (single source of truth
+	// for stats — the evidence blob only pins body/hash, not the numbers).
+	if ev.UnitID != 0 {
+		if u, err := learn.GetUnit(s.Store, ev.UnitID); err == nil && u != nil && u.NPresent != nil {
+			present := *u.NPresent
+			donePresent := 0.0
+			if u.DonePresent != nil {
+				donePresent = *u.DonePresent
+			}
+			doneCount := int(donePresent*float64(present) + 0.5)
+			a.KnowledgeCI = fmt.Sprintf("n=%d, %s", present, learn.FormatWilson(doneCount, present))
+		}
+	}
 }
 
 func (s *Server) queryFlags(status string) ([]FlagRow, error) {

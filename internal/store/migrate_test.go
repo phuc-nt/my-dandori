@@ -1,6 +1,9 @@
 package store
 
 import (
+	"database/sql"
+	"io"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -97,4 +100,110 @@ func TestSettings(t *testing.T) {
 	if got := s.Setting("k"); got != "v2" {
 		t.Errorf("upsert: got %q", got)
 	}
+}
+
+// TestMigrate016OnRealFleetDB proves the 016 migration (knowledge_units +
+// knowledge_transitions + the adoptions rebuild) applies cleanly on the
+// ACTUAL fleet database, not just an empty/synthetic one. It copies
+// ~/.dandori/dandori.db into a scratch t.TempDir() and operates only on that
+// copy — the original fleet DB is NEVER opened or written by this test. If
+// the fleet DB isn't present (e.g. CI, a fresh machine), the test skips
+// rather than failing.
+func TestMigrate016OnRealFleetDB(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home dir:", err)
+	}
+	src := filepath.Join(home, ".dandori", "dandori.db")
+	info, err := os.Stat(src)
+	if err != nil || info.IsDir() {
+		t.Skip("fleet DB not present at", src)
+	}
+
+	dst := filepath.Join(t.TempDir(), "fleet-copy.db")
+	if err := copyFile(src, dst); err != nil {
+		t.Fatalf("copy fleet db: %v", err)
+	}
+
+	// Count adoptions BEFORE migrating, via a raw read-only connection (no
+	// migration side effects from merely counting).
+	preCount, err := countAdoptionsReadOnly(dst)
+	if err != nil {
+		t.Fatalf("pre-migrate adoptions count: %v", err)
+	}
+
+	s, err := Open(dst) // runs all pending migrations, including 016
+	if err != nil {
+		t.Fatalf("open+migrate fleet copy: %v", err)
+	}
+	defer s.Close()
+
+	var version int
+	if err := s.DB.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		t.Fatalf("user_version: %v", err)
+	}
+	if version < 16 {
+		t.Fatalf("user_version after migrate: %d, want >= 16", version)
+	}
+
+	for _, tbl := range []string{"knowledge_units", "knowledge_transitions"} {
+		var n int
+		if err := s.DB.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?`, tbl).
+			Scan(&n); err != nil || n != 1 {
+			t.Errorf("table %s: count=%d err=%v", tbl, n, err)
+		}
+	}
+
+	var postCount int
+	if err := s.DB.QueryRow(`SELECT count(*) FROM adoptions`).Scan(&postCount); err != nil {
+		t.Fatalf("post-migrate adoptions count: %v", err)
+	}
+	if postCount != preCount {
+		t.Errorf("adoptions count changed by migration: before=%d after=%d", preCount, postCount)
+	}
+
+	// New columns must be usable: unit_id + installed on an adoptions insert,
+	// and a knowledge_units row with the new name/version_n/supersedes_id
+	// columns.
+	if _, err := s.DB.Exec(`INSERT INTO knowledge_units(kind, name, title, state, version_n, created_at, updated_at)
+		VALUES('skill', 'migration-smoke-test', 'Migration smoke test', 'nominated', 1, ?, ?)`, Now(), Now()); err != nil {
+		t.Fatalf("insert knowledge_units row: %v", err)
+	}
+	var unitID int64
+	if err := s.DB.QueryRow(`SELECT id FROM knowledge_units WHERE name = 'migration-smoke-test'`).Scan(&unitID); err != nil {
+		t.Fatalf("read back knowledge_units row: %v", err)
+	}
+	if _, err := s.DB.Exec(`INSERT INTO adoptions(unit_id, installed, adopted_at) VALUES(?, 1, ?)`,
+		unitID, Now()); err != nil {
+		t.Fatalf("insert adoptions with unit_id+installed: %v", err)
+	}
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = io.Copy(out, in)
+	return err
+}
+
+// countAdoptionsReadOnly opens the DB file with a bare database/sql
+// connection — bypassing this package's Open/migrate entirely — so counting
+// rows before the 016 migration runs doesn't itself trigger the migration.
+func countAdoptionsReadOnly(path string) (int, error) {
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+	var n int
+	err = db.QueryRow(`SELECT count(*) FROM adoptions`).Scan(&n)
+	return n, err
 }

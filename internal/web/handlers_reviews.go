@@ -12,7 +12,11 @@ import (
 )
 
 // handleReviews renders the review queue (UB1): pending approvals live-polled
-// every 3s, decision history below.
+// every 3s, decision history below. For observer:knowledge-* approvals, F1
+// CRITICAL requires the FULL pinned body+content_hash to render right here at
+// the decide surface (queryApprovals → loadKnowledgeEvidence in viewdata.go),
+// not just on the /knowledge detail page — the human approving from this
+// inbox must see the exact bytes, never a truncated summary.
 func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
 	pending, err := s.queryApprovals("pending")
 	if err != nil {

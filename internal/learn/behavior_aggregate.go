@@ -16,6 +16,12 @@ import (
 // tech lead — never a ranking, never published (red-team H5).
 const OperatorCaveat = "Chỉ số riêng tư cho coaching — can thiệp giữa run nhiều khi là điều ĐÚNG, không dùng để xếp hạng người."
 
+// RegressionToMeanCaveat (F10) travels with every before/after adoption
+// outcome surface — a single before/after delta can move either direction
+// on its own, independent of the knowledge unit's real effect, so it is an
+// observation to discuss, never a causal conclusion on its own.
+const RegressionToMeanCaveat = "Quan sát — không phải kết luận (có thể do hồi quy về trung bình)."
+
 type OperatorBehavior struct {
 	OperatorID  string
 	Runs        int

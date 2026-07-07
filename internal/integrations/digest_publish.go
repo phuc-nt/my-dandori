@@ -110,6 +110,10 @@ func slackText(d *learn.DigestData) string {
 	if len(d.Spiked) > 0 {
 		fmt.Fprintf(&b, "\n⚠️ Cost spikes today: %s", strings.Join(d.Spiked, ", "))
 	}
+	if d.KnowledgePublishedCount > 0 {
+		fmt.Fprintf(&b, "\n📚 Tuần này team publish %d practice mới: %s",
+			d.KnowledgePublishedCount, strings.Join(d.KnowledgePublishedTitles, "; "))
+	}
 	b.WriteString("\nTop agents:")
 	for i, row := range d.Board {
 		if i >= 5 {
@@ -133,6 +137,12 @@ func gmailText(d *learn.DigestData) string {
 	fmt.Fprintf(&b, "AI change-failure rate: %.0f%% (%s)\n", d.CFR.Value, d.CFR.Formula)
 	if len(d.Spiked) > 0 {
 		fmt.Fprintf(&b, "\nCost spikes today: %s\n", strings.Join(d.Spiked, ", "))
+	}
+	if d.KnowledgePublishedCount > 0 {
+		fmt.Fprintf(&b, "\nTuần này team publish %d practice mới:\n", d.KnowledgePublishedCount)
+		for _, title := range d.KnowledgePublishedTitles {
+			fmt.Fprintf(&b, "- %s\n", title)
+		}
 	}
 	b.WriteString("\nLeaderboard:\n")
 	for _, row := range d.Board {

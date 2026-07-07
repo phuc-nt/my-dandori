@@ -97,7 +97,7 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 | L5 | **Cross-fleet leaderboard** — xếp hạng, phân bố grade, đội lên/xuống | "Team A hay team B dùng AI tốt hơn — bằng chứng, không cảm giác" | so sánh cần cùng một bảng | **[MVP]** |
 | L6 | **Trend / trust index** — xu hướng theo tuần, điểm tổng hợp 0–100 + autonomy band | "Agent đang lên hay tụt — có nên giao task khó hơn?" | cần tín hiệu để phân việc | **v3 ✅** |
 | L7 | **Agent assignment** — gợi ý agent cho task theo capability/history/load, PO confirm | "Task này giao agent nào hợp nhất?" | phân việc còn thủ công | **v7 ✅** |
-| L8 | **Knowledge capture** — đóng gói pattern/prompt/context tốt thành tri thức tái dùng | "Senior nghỉ, tri thức ở lại" | tri thức đi theo người nghỉ | **v3 ✅** |
+| L8 | **Knowledge capture** — đóng gói pattern/prompt/context tốt thành tri thức tái dùng | "Senior nghỉ, tri thức ở lại" | tri thức đi theo người nghỉ | **v12 ✅ measurable loop** (v3 khởi tạo playbook; v12: detect→nominate→review→publish→adopt→measure→mandate→retire đo được đến từng agent) |
 | L9 | **Insights — hiệu suất chi phí** (`/insights`): model efficiency (cost/done, cache-hit), cost-per-outcome theo project/agent — descriptive stats thuần, mẫu n<3 gắn nhãn "chưa đủ mẫu" | "Model nào đáng tiền, project nào tốn/kết quả — không phải điểm agent" | phân biệt chi phí vs điểm | **v9 ✅** |
 
 ---
@@ -151,7 +151,7 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 |---|---|---|---|---|---|
 | UD1 | **Context editor + version** | sửa mọi layer (Company→Task), tự version, ghi ai/khi nào | CAPTURE | — | **v5 ✅** |
 | UD2 | **Context diff + rollback** | so hai version một CLAUDE.md/policy, revert một click | CAPTURE·GOVERN | — | **v5 ✅** |
-| UD3 | **Promote to org policy** | "thăng" context team/agent tốt lên tầng Company | CAPTURE·LEARN | — | **v5 ✅** |
+| UD3 | **Promote to org policy** | "thăng" context team/agent tốt lên tầng Company | CAPTURE·LEARN | — | **v5 ✅** (v12: promote đi qua cùng nominate→review knowledge loop thay vì ghi trực tiếp) |
 | UD4 | **"Effective context" preview** | xem đúng context đã merge mà agent *thực sự* thấy cho một task | CAPTURE | — | **v5 ✅** |
 
 > UD4 bị đánh giá thấp một cách oan: câu hỏi debug số một luôn là *"agent thật ra biết những gì?"* — preview này trả lời thẳng.
@@ -187,7 +187,7 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 | UG2 | **Alert subscription (đa kênh)** | đăng ký điều kiện (budget >80%, grade tụt, revert) → đẩy ra **Slack** (channel/DM) hoặc **Gmail** | GOVERN·LEARN | Slack, GWS Gmail | **[MVP]** |
 | UG2b | **Digest theo vai** | daily/weekly fleet-health digest gửi Slack (đội) + Gmail (người không ở Slack) | LEARN | Slack, GWS Gmail | **v7 ✅** |
 | UG3 | **Saved views** | lưu bảng đã lọc (vd "run fail của team tôi") thành tab đặt tên | CAPTURE | — | **v7 ✅** |
-| UG4 | **Run → playbook** | biến run tốt thành template tái dùng (task+context+guardrail) | LEARN | runtime | **v3 ✅** |
+| UG4 | **Run → playbook** | biến run tốt thành template tái dùng (task+context+guardrail) | LEARN | runtime | **v3 ✅** (v12: candidate giờ đi qua nominate→review knowledge, không còn ghi thẳng playbook — cùng review gate với skill/context/rule) |
 | UG5 | **Live fleet wallboard** | chế độ TV: run đang chạy, gauge spend, độ sâu queue | CAPTURE·GOVERN | runtime | **v7 ✅** |
 | UG6 | **Compliance export** | bundle JSON/CSV + audit trail, xuất sang SIEM | GOVERN·CAPTURE | — | **v2 ✅** |
 

@@ -22,7 +22,7 @@ var pageNames = []string{
 	"standup", "dash_org", "dash_project", "dash_agent",
 	"runs", "run_detail", "run_compare", "reviews", "budgets", "provenance", "rules", "spikes", "playbooks",
 	"chat", "exec_home", "contexts", "launch", "gate_thresholds", "wallboard",
-	"settings_integrations", "welcome", "risk", "insights", "login",
+	"settings_integrations", "welcome", "risk", "insights", "login", "knowledge",
 }
 
 type renderer struct {
@@ -76,6 +76,16 @@ var tmplFuncs = template.FuncMap{
 		}
 		return *p
 	},
+	// derefInt is deref's *int twin — KnowledgeUnit.NPresent/NAbsent are
+	// *int (not *int64, unlike SupersedesID/RefID), so deref's signature
+	// does not fit; a second tiny helper is simpler than changing either
+	// struct's field type just for template access.
+	"derefInt": func(p *int) int {
+		if p == nil {
+			return 0
+		}
+		return *p
+	},
 	"usd":    func(v float64) string { return fmt.Sprintf("$%.2f", v) },
 	"pct":    func(v float64) string { return fmt.Sprintf("%.0f%%", v) },
 	"mul100": func(v float64) float64 { return v * 100 },
@@ -107,6 +117,30 @@ var tmplFuncs = template.FuncMap{
 		}
 		successes := int(value/100*float64(n) + 0.5)
 		return learn.FormatWilson(successes, n)
+	},
+	// ruleIntentRetire/ruleIntentScopeUp (H1) drive the prominent warning
+	// banner on the knowledge unit detail page for kind=rule, so an admin
+	// about to click "Duyệt publish" sees the actual pinned effect (retire
+	// vs scope-up vs plain enable) before deciding — same intent the applier
+	// (applyKnowledgeRuleWrite) will execute.
+	"ruleIntentRetire":  func(name string) bool { return learn.RuleIntentFromName(name) == learn.RuleIntentRetire },
+	"ruleIntentScopeUp": func(name string) bool { return learn.RuleIntentFromName(name) == learn.RuleIntentScopeUp },
+	// knowledgeDone renders a live-recomputed done-rate as a whole percent
+	// (the CI is shown alongside it separately on the suggest card, since
+	// UnitSuggestion already carries pre-rounded whole-percent CI bounds —
+	// this only needs the point estimate, not another FormatWilson call).
+	"knowledgeDone": func(rate float64, n int) string {
+		if n == 0 {
+			return "— (chưa có mẫu)"
+		}
+		return fmt.Sprintf("%.0f%%", rate*100)
+	},
+	// knowledgeEngineerInsufficient reports whether a unit was engineer-
+	// nominated (NominatedBy != the fixed detector actor string) AND its
+	// present-side sample is below the knowledge-nominate floor — the F9
+	// "engineer-nominated · chưa đủ dữ liệu" badge (spec: show, never hide).
+	"knowledgeEngineerInsufficient": func(nominatedBy string, nPresent int) bool {
+		return nominatedBy != "" && nominatedBy != "dandori-observer" && nPresent < learn.MinSampleForKnowledge
 	},
 	"statusColor": func(s string) string {
 		switch s {

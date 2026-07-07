@@ -35,8 +35,13 @@ func (b *ApprovalBridge) Tick() {
 }
 
 func (b *ApprovalBridge) postNew() error {
+	// F1 CRITICAL: knowledge-* approvals are web-only — a one-tap Slack
+	// reaction must never approve a skill/context/rule/playbook publish
+	// without the reviewer having seen the full pinned body (a truncated
+	// Slack summary is exactly the blind-approve C1 lesson this excludes).
 	rows, err := b.St.DB.Query(`SELECT id, COALESCE(run_id,''), action, COALESCE(reason,'')
-		FROM approvals WHERE status = 'pending' AND slack_ts IS NULL ORDER BY id LIMIT 10`)
+		FROM approvals WHERE status = 'pending' AND slack_ts IS NULL
+		AND action NOT LIKE 'observer:knowledge-%' ORDER BY id LIMIT 10`)
 	if err != nil {
 		return err
 	}
@@ -76,8 +81,12 @@ func (b *ApprovalBridge) postNew() error {
 }
 
 func (b *ApprovalBridge) pollReactions() error {
+	// F1: mirrors the same blacklist in postNew — belt-and-suspenders in case
+	// a knowledge-* row ever got a slack_ts by some other path, a stray
+	// reaction still cannot resolve it via the poller.
 	rows, err := b.St.DB.Query(`SELECT id, slack_ts FROM approvals
-		WHERE status = 'pending' AND slack_ts IS NOT NULL AND slack_ts != 'dry-run' LIMIT 20`)
+		WHERE status = 'pending' AND slack_ts IS NOT NULL AND slack_ts != 'dry-run'
+		AND action NOT LIKE 'observer:knowledge-%' LIMIT 20`)
 	if err != nil {
 		return err
 	}

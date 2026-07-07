@@ -2,6 +2,8 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -10,8 +12,6 @@ import (
 
 	"github.com/phuc-nt/dandori/internal/capture"
 	"github.com/phuc-nt/dandori/internal/learn"
-	"github.com/phuc-nt/dandori/internal/redact"
-	"github.com/phuc-nt/dandori/internal/store"
 )
 
 // PlaybookRow is one saved starting kit.
@@ -23,8 +23,13 @@ type PlaybookRow struct {
 	TopFiles                            []string
 }
 
-// handlePlaybookCreate packages a good run into a reusable playbook (UG4):
-// prompt, most-touched files, model and cost norm — the LEARN flywheel.
+// handlePlaybookCreate (H3) no longer writes the playbooks table directly —
+// that bypassed the knowledge review gate entirely (a viewer's "save as
+// playbook" click went live with zero review, unlike every other knowledge
+// kind). It now nominates a kind=playbook knowledge_units row instead (F9:
+// nominate stays viewer-ok); the REAL playbooks row is only created by
+// applyKnowledgePlaybookWriteTx after an admin approves knowledge-publish at
+// /reviews, same gate PromoteCandidate's auto-detected candidates go through.
 func (s *Server) handlePlaybookCreate(w http.ResponseWriter, r *http.Request) {
 	runID := chi.URLParam(r, "id")
 	name := r.FormValue("name")
@@ -48,19 +53,26 @@ func (s *Server) handlePlaybookCreate(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	topFiles, _ := json.Marshal(s.topFiles(runID, 5))
-	// Prompts come from the raw transcript (unredacted on disk) and users
-	// paste credentials into first prompts — redact before persisting.
-	_, err = s.Store.DB.Exec(`INSERT INTO playbooks(name, run_id, agent_id, task_key, prompt, model, cost_usd, top_files, notes, created_at, created_by)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		name, runID, run.AgentID, run.TaskKey, redact.String(prompt), run.Model, run.CostUSD,
-		string(topFiles), redact.String(r.FormValue("notes")), store.Now(), s.actor(r))
+	_ = prompt // retained for future playbook body/prompt capture (not yet part of NominateParams)
+
+	unitID, err := learn.NominateUnit(s.Store, learn.NominateParams{
+		Kind:          learn.KindPlaybook,
+		Name:          learn.PlaybookSlug(runID),
+		Title:         name,
+		RefKind:       "run",
+		ProvenanceRun: []string{runID},
+		NominatedBy:   s.actor(r),
+	})
 	if err != nil {
+		if errors.Is(err, learn.ErrDuplicateDraft) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	s.audit(r, "save_playbook", runID, name)
-	http.Redirect(w, r, "/playbooks", http.StatusSeeOther)
+	s.audit(r, "nominate_playbook", runID, name)
+	http.Redirect(w, r, fmt.Sprintf("/knowledge/unit/%d", unitID), http.StatusSeeOther)
 }
 
 // topFiles ranks the files a run touched most (Read/Edit/Write payloads).

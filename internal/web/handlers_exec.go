@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -42,10 +43,26 @@ func (s *Server) handleExecHome(w http.ResponseWriter, r *http.Request) {
 
 // handleExecApprove approves an inbox item through the SAME audited decide
 // path as the technical review queue, then applies observer/chat requests.
+//
+// M3: knowledge-* approvals are EXCLUDED from this generic one-click path,
+// same F1 class as the Slack reaction exclusion (approvals.go postNew) —
+// this route's inbox card never renders the full pinned body, so a one-click
+// approve here would be exactly the blind-approve C1 lesson knowledge
+// publish exists to prevent. Knowledge decisions happen ONLY at /reviews
+// (which does render the full body).
 func (s *Server) handleExecApprove(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		http.Error(w, "bad id", http.StatusBadRequest)
+		return
+	}
+	var action string
+	if err := s.Store.Read().QueryRow(`SELECT action FROM approvals WHERE id = ?`, id).Scan(&action); err != nil {
+		http.Error(w, "approval not found", http.StatusNotFound)
+		return
+	}
+	if strings.HasPrefix(action, "observer:knowledge-") {
+		http.Error(w, "tri thức chỉ được duyệt tại /reviews (xem đầy đủ nội dung trước khi quyết định)", http.StatusForbidden)
 		return
 	}
 	won, err := govern.Decide(s.Store, id, true, s.actor(r), "duyệt từ bảng điều hành")

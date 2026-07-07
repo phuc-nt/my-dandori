@@ -85,6 +85,8 @@ Mỗi xô kèm danh sách run cụ thể — click vào đô-la nào cũng ra đ
 
 Đây là chỗ LEARN chảy ngược vào GOVERN: điểm thấp không chỉ "được nhìn thấy" — nó **siết quyền ngay**, và điểm lên thì nới lại.
 
+**Cùng logic đó áp cho tri thức, không chỉ agent:** khi dữ liệu cho thấy một cách làm/skill thực sự cải thiện kết quả (chênh lệch present-vs-absent đủ mẫu, khoảng tin cậy tách biệt rõ), Dandori đưa nó qua đúng một vòng — người duyệt xem toàn bộ nội dung trước khi công bố, rồi đo tiếp before/after ở từng người áp dụng. Đo được là *giữ*; đo ra tệ hơn là *đề xuất rút lại*, không bao giờ tự động — người luôn quyết câu cuối, số liệu chỉ đưa bằng chứng lên bàn.
+
 ### 2.5. Hiệu suất chi phí (insights): model nào đáng tiền
 
 Tầng phân tích mô tả thuần (cố ý **không** trộn vào điểm agent):

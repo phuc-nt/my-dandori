@@ -44,7 +44,7 @@ var flywheelDetectCmd = &cobra.Command{
 
 var flywheelPromoteCmd = &cobra.Command{
 	Use:   "promote <run-id>",
-	Short: "Promote a candidate run to a playbook card",
+	Short: "Nominate a candidate run as a knowledge unit (playbook, pending review)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, st, err := openStore()
@@ -62,7 +62,7 @@ var flywheelPromoteCmd = &cobra.Command{
 				if err != nil {
 					return err
 				}
-				fmt.Printf("playbook #%d created from run %s\n", id, c.RunID)
+				fmt.Printf("nominated unit #%d — review tại /knowledge\n", id)
 				return nil
 			}
 		}
@@ -145,6 +145,7 @@ var flywheelAdoptionCmd = &cobra.Command{
 			}
 			fmt.Println(line)
 		}
+		fmt.Println(learn.RegressionToMeanCaveat)
 		return nil
 	},
 }

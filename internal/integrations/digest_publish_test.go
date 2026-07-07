@@ -3,6 +3,7 @@ package integrations
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -189,4 +190,56 @@ func TestDigestSendEmptyFleetNoPanic(t *testing.T) {
 
 func gmailDate() string {
 	return time.Now().UTC().Format("2006-01-02")
+}
+
+// TestDigestKnowledgePublishedSectionHasNoActorTable: the "team publish N
+// practice mới" line (P4 §5) must render as count + titles ONLY — no
+// per-actor/contributor breakdown or ranking, even when the underlying data
+// has titles that could be mistaken for names. This directly exercises
+// slackText/gmailText (same package, unexported) rather than the full Send
+// pipeline, since the digest DATA itself already forbids carrying any actor
+// field (learn.DigestData has no such field to begin with — this test
+// additionally locks the rendered TEXT contract).
+func TestDigestKnowledgePublishedSectionHasNoActorTable(t *testing.T) {
+	data := &learn.DigestData{
+		WindowDays:               7,
+		KnowledgePublishedCount:  2,
+		KnowledgePublishedTitles: []string{"Checkout retry pattern", "PR review checklist"},
+	}
+
+	slack := slackText(data)
+	gmail := gmailText(data)
+
+	for _, text := range []string{slack, gmail} {
+		if !strings.Contains(text, "2") {
+			t.Errorf("digest text missing published count: %q", text)
+		}
+		for _, title := range data.KnowledgePublishedTitles {
+			if !strings.Contains(text, title) {
+				t.Errorf("digest text missing title %q: %q", title, text)
+			}
+		}
+		// No actor/contributor column ever appears next to the published-
+		// practice line — the ONLY table-like breakdown allowed in the
+		// digest is the pre-existing Top-agents/Leaderboard section, which
+		// is a separate concern (per-agent grade, not knowledge attribution).
+		if strings.Contains(text, "NominatedBy") {
+			t.Errorf("digest text must never surface a NominatedBy/actor field: %q", text)
+		}
+	}
+}
+
+// TestDigestKnowledgePublishedSectionOmittedWhenZero: no publish activity in
+// the window → the section must not appear at all (not "0 practice mới"
+// noise).
+func TestDigestKnowledgePublishedSectionOmittedWhenZero(t *testing.T) {
+	data := &learn.DigestData{WindowDays: 7}
+	slack := slackText(data)
+	gmail := gmailText(data)
+	if strings.Contains(slack, "practice mới") {
+		t.Errorf("slack text should omit the published-practice line when count=0: %q", slack)
+	}
+	if strings.Contains(gmail, "practice mới") {
+		t.Errorf("gmail text should omit the published-practice line when count=0: %q", gmail)
+	}
 }

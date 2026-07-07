@@ -277,6 +277,12 @@ func applyInsightAction(st *store.Store, typ string, insightID int64, decidedBy 
 		return applyPRReview(st, evidence, insightID, decidedBy)
 	case "calendar-event":
 		return applyCalendarEvent(st, evidence, insightID, decidedBy)
+	case "knowledge-publish":
+		return applyKnowledgePublish(st, evidence, insightID, decidedBy)
+	case "knowledge-mandate": // P6 fills in the real apply
+		return applyKnowledgeMandate(st, evidence, insightID, decidedBy)
+	case "knowledge-retire": // P6 fills in the real apply
+		return applyKnowledgeRetire(st, evidence, insightID, decidedBy)
 	default:
 		return errPermanentApply{fmt.Errorf("unknown observer action type %q", typ)}
 	}

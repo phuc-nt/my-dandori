@@ -110,6 +110,29 @@ func TestExecApproveUsesAuditedPath(t *testing.T) {
 	}
 }
 
+// TestExecApproveRejectsKnowledge (M3) proves a knowledge-* approval cannot
+// be one-click-approved through the generic exec inbox path — same F1
+// exclusion class as the Slack reaction bridge — since this route's card
+// never renders the full pinned body.
+func TestExecApproveRejectsKnowledge(t *testing.T) {
+	s := testServer(t)
+	seedExecFixture(t, s)
+	s.Store.DB.Exec(`INSERT INTO approvals(run_id, action, reason, requested_at)
+		VALUES(NULL, 'observer:knowledge-publish:1', 'Đề xuất publish tri thức', 'now')`)
+	var id int64
+	s.Store.DB.QueryRow(`SELECT id FROM approvals WHERE action = 'observer:knowledge-publish:1'`).Scan(&id)
+
+	rec := postForm(t, s, "/exec/approve/"+strconv.FormatInt(id, 10), nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("knowledge approve via exec inbox → %d, want 403", rec.Code)
+	}
+	var status string
+	s.Store.DB.QueryRow(`SELECT status FROM approvals WHERE id = ?`, id).Scan(&status)
+	if status != "pending" {
+		t.Errorf("knowledge approval status = %q, must stay pending (decided only at /reviews)", status)
+	}
+}
+
 func TestExecDismissResolvesInsight(t *testing.T) {
 	s := testServer(t)
 	st := s.Store

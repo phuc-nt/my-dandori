@@ -32,6 +32,31 @@
     <div class="text-xs text-gray-500 mt-3 mb-1">Toàn bộ nội dung nhập từ Drive ({{.ImportRunes}} ký tự, cuộn để xem hết):</div>
     <pre class="text-xs leading-5 bg-gray-50 border rounded p-3 overflow-y-auto whitespace-pre-wrap" style="max-height:320px">{{.ImportContent}}</pre>
     {{end}}
+    {{if .KnowledgeKind}}
+    <div class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mt-3 mb-1">
+      Tri thức <strong>{{.KnowledgeKind}}</strong> · <code>{{.KnowledgeName}}</code>{{if .KnowledgeLayer}} · layer {{.KnowledgeLayer}}/{{.KnowledgeLayerTarget}}{{end}} — quyết định CHỈ tại web (không qua Slack).
+      {{if .KnowledgeUnitID}}<a class="text-blue-600 hover:underline ml-1" href="/knowledge/unit/{{.KnowledgeUnitID}}">xem chi tiết unit #{{.KnowledgeUnitID}}</a>{{end}}
+    </div>
+    {{if eq .KnowledgeRuleIntent "retire"}}
+    <div class="text-sm font-bold text-red-700 bg-red-50 border-2 border-red-300 rounded p-2 mt-1 mb-1">
+      ⚠️ ĐỀ XUẤT TẮT RULE — duyệt sẽ set enabled=0 cho rule này.
+    </div>
+    {{else if eq .KnowledgeRuleIntent "scope-up"}}
+    <div class="text-sm font-bold text-orange-700 bg-orange-50 border-2 border-orange-300 rounded p-2 mt-1 mb-1">
+      ⚠️ NÂNG SCOPE — duyệt sẽ nâng rule này lên scope company/global.
+    </div>
+    {{end}}
+    {{if .KnowledgeCI}}
+    <div class="text-xs text-gray-500 mb-1">{{.KnowledgeCI}}</div>
+    {{end}}
+    {{if .KnowledgeContentHash}}
+    <div class="text-xs text-gray-500 mb-1">sha256: <code>{{.KnowledgeContentHash}}</code></div>
+    {{end}}
+    {{if .KnowledgeBody}}
+    <div class="text-xs text-gray-500 mb-1">Toàn bộ nội dung đã ghim (không rút gọn):</div>
+    <pre class="text-xs leading-5 bg-gray-50 border rounded p-3 overflow-y-auto whitespace-pre-wrap" style="max-height:320px">{{.KnowledgeBody}}</pre>
+    {{end}}
+    {{end}}
   </div>
   {{else}}
   <div class="p-6 text-center text-gray-400 bg-white border rounded-lg">Queue clear — nothing needs you right now. 🎉</div>

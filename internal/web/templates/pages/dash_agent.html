@@ -40,6 +40,13 @@
   </div>
 </div>
 
+<div class="bg-white border rounded-lg p-4 mb-6">
+  <h2 class="font-semibold mb-1">Tri thức chưa dùng — gợi ý</h2>
+  <div hx-get="/agents/{{.M.AgentID}}/knowledge-suggest" hx-trigger="load" hx-swap="innerHTML">
+    <span class="text-gray-400 text-sm">Đang tải…</span>
+  </div>
+</div>
+
 <div class="grid md:grid-cols-2 gap-4 mb-6">
   <div class="bg-white border rounded-lg p-4">
     <h2 class="font-semibold mb-1">ROI</h2>
@@ -58,4 +65,46 @@
     </table>
   </div>
 </div>
+{{end}}
+
+{{define "knowledge_suggest_card"}}
+{{if .Suggestions}}
+<div class="space-y-3">
+  {{range .Suggestions}}
+  <div class="border rounded p-3">
+    <div class="text-sm mb-1">
+      Agent chưa dùng {{.Kind}} <code class="font-mono">{{.Name}}</code> — <b>{{.Title}}</b>
+    </div>
+    <div class="text-xs text-gray-600 mb-1">
+      Fleet: có {{knowledgeDone .DonePresent .NPresent}} [CI {{.CIPresentLo}}–{{.CIPresentHi}}%, n={{.NPresent}}]
+      · không có {{knowledgeDone .DoneAbsent .NAbsent}} [CI {{.CIAbsentLo}}–{{.CIAbsentHi}}%, n={{.NAbsent}}]
+      {{if eq .Kind "skill"}}
+      · số liệu tính lúc xem.
+      {{else}}
+      · số liệu chốt lúc đề cử (chưa tính lại theo thời gian thực cho loại này).
+      {{end}}
+    </div>
+    <div class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 inline-block mb-2">
+      Quan sát — không phải kết luận (có thể do hồi quy về trung bình).
+    </div>
+    <div class="flex items-center gap-3 flex-wrap">
+      <a class="text-blue-600 hover:underline text-xs" href="/knowledge/unit/{{.UnitID}}">Provenance</a>
+      {{if eq .Kind "context"}}
+        <span class="text-xs text-gray-500">đã inject qua layer ({{.Layer}}) — đo qua context-ROI, không có nút adopt</span>
+      {{else if eq .Kind "playbook"}}
+        <a class="bg-slate-700 text-white text-xs px-2 py-1 rounded" href="/knowledge/unit/{{.UnitID}}">Xem prompt / prefill</a>
+      {{else if eq .Kind "skill"}}
+        <code class="text-xs bg-gray-100 px-2 py-1 rounded">dandori skill pull {{.Name}}</code>
+        <button class="bg-green-600 text-white text-xs px-2 py-1 rounded"
+                hx-post="/knowledge/unit/{{.UnitID}}/adopt-skill" hx-swap="outerHTML">
+          Đánh dấu sẽ dùng
+        </button>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+</div>
+{{else}}
+<span class="text-gray-400 text-sm">Chưa có gợi ý phù hợp (chưa đủ dữ liệu hoặc agent đã dùng hết tri thức khớp).</span>
+{{end}}
 {{end}}

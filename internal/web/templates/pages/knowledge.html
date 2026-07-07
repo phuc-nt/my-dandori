@@ -1,0 +1,212 @@
+{{define "content"}}
+{{if .Unit}}
+  {{template "knowledge_unit_detail" .}}
+{{else}}
+  {{template "knowledge_queue_body" .}}
+{{end}}
+{{end}}
+
+{{define "knowledge_queue_body"}}
+<h1 class="text-2xl font-bold mb-1">Hàng chờ tri thức</h1>
+<p class="text-gray-500 mb-4">Detector quan sát &amp; đề cử — người duyệt tại đây. Publish quyết định CHỈ tại web (không qua Slack).</p>
+
+<form method="get" action="/knowledge" class="flex gap-3 mb-4 items-end">
+  <label class="text-sm">Trạng thái<br>
+    <select name="state" class="border rounded px-2 py-1" onchange="this.form.submit()">
+      <option value="">tất cả</option>
+      {{range list "nominated" "in_review" "published" "adopted" "measured" "rejected" "retired" "superseded"}}
+      <option value="{{.}}" {{if eq $.State .}}selected{{end}}>{{.}}</option>
+      {{end}}
+    </select></label>
+  <label class="text-sm">Kind<br>
+    <select name="kind" class="border rounded px-2 py-1" onchange="this.form.submit()">
+      <option value="">tất cả</option>
+      {{range list "context" "rule" "playbook" "skill"}}
+      <option value="{{.}}" {{if eq $.Kind .}}selected{{end}}>{{.}}</option>
+      {{end}}
+    </select></label>
+</form>
+
+{{template "knowledge_list" .}}
+
+{{if .Compliance}}
+<h2 class="text-lg font-semibold mt-8 mb-2">Compliance mandate — install-status theo agent</h2>
+<p class="text-xs text-gray-500 mb-2">Chỉ trạng thái cài đặt (đã cài / lệch phiên bản / chưa cài) — KHÔNG xếp hạng.</p>
+<div class="bg-white border rounded-lg overflow-hidden mb-8">
+<table class="w-full text-sm">
+  <thead class="bg-gray-100 text-left"><tr>
+    <th class="p-2">Skill</th><th class="p-2">Agent</th><th class="p-2">Trạng thái</th>
+  </tr></thead>
+  <tbody>
+  {{range .Compliance}}
+    <tr class="border-t">
+      <td class="p-2 font-mono text-xs">{{.Name}}</td>
+      <td class="p-2 font-mono text-xs">{{.OperatorID}}</td>
+      <td class="p-2">
+        {{if eq .Status "ok"}}<span class="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">đã cài</span>
+        {{else if eq .Status "stale"}}<span class="px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-700">lệch phiên bản</span>
+        {{else}}<span class="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">chưa cài</span>{{end}}
+      </td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+
+<h2 class="text-lg font-semibold mt-8 mb-2">Đề cử mới (viewer OK)</h2>
+<form method="post" action="/knowledge/nominate" class="bg-white border rounded-lg p-4 grid md:grid-cols-6 gap-3 items-end">
+  <label class="text-sm">Kind<br>
+    <select name="kind" class="border rounded px-2 py-1 w-full">
+      <option value="skill">skill</option><option value="context">context</option>
+    </select></label>
+  <label class="text-sm md:col-span-2">Tên (slug)<br>
+    <input name="name" required pattern="[a-z0-9][a-z0-9-]*" placeholder="my-skill-name" class="border rounded px-2 py-1 w-full font-mono"></label>
+  <label class="text-sm md:col-span-3">Tiêu đề<br>
+    <input name="title" required placeholder="mô tả ngắn" class="border rounded px-2 py-1 w-full"></label>
+  <label class="text-sm md:col-span-6">Nội dung (tối đa 64KB — quét secret trước khi lưu)<br>
+    <textarea name="body" rows="4" class="border rounded px-2 py-1 w-full font-mono text-xs"></textarea></label>
+  <label class="text-sm">Layer (tuỳ chọn)<br>
+    <input name="layer" placeholder="team/company" class="border rounded px-2 py-1 w-full"></label>
+  <label class="text-sm">Layer target<br>
+    <input name="layer_target" class="border rounded px-2 py-1 w-full"></label>
+  <div class="md:col-span-6">
+    <button class="bg-blue-700 text-white px-4 py-2 rounded">Đề cử</button>
+  </div>
+</form>
+{{end}}
+
+{{define "knowledge_list"}}
+<div id="knowledge-list" class="bg-white border rounded-lg overflow-hidden">
+<table class="w-full text-sm">
+  <thead class="bg-gray-100 text-left"><tr>
+    <th class="p-2">#</th><th class="p-2">Kind</th><th class="p-2">Tên</th><th class="p-2">Tiêu đề</th>
+    <th class="p-2">v</th><th class="p-2">State</th><th class="p-2">Cập nhật</th><th class="p-2"></th>
+  </tr></thead>
+  <tbody>
+  {{range .Units}}
+    <tr class="border-t">
+      <td class="p-2">{{.ID}}</td>
+      <td class="p-2"><span class="px-2 py-0.5 rounded text-xs bg-indigo-100 text-indigo-700">{{.Kind}}</span></td>
+      <td class="p-2 font-mono text-xs">{{.Name}}</td>
+      <td class="p-2">{{.Title}}</td>
+      <td class="p-2">v{{.VersionN}}</td>
+      <td class="p-2"><span class="px-2 py-0.5 rounded text-xs {{statusColor .State}} bg-gray-100">{{.State}}</span></td>
+      <td class="p-2 text-xs text-gray-500">{{.UpdatedAt}}</td>
+      <td class="p-2"><a class="text-blue-600 hover:underline text-xs" href="/knowledge/unit/{{.ID}}">xem</a></td>
+    </tr>
+  {{else}}
+    <tr><td colspan="8" class="p-6 text-center text-gray-400">Chưa có candidate nào ở trạng thái này.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+
+{{define "knowledge_unit_detail"}}
+{{$u := .Unit}}
+<a href="/knowledge" class="text-sm text-blue-600 hover:underline">&larr; Hàng chờ tri thức</a>
+<h1 class="text-2xl font-bold mt-1 mb-1">#{{$u.ID}} · {{$u.Kind}} · <code>{{$u.Name}}</code> · v{{$u.VersionN}}</h1>
+<div class="mb-4">
+  <span class="px-2 py-0.5 rounded text-xs {{statusColor $u.State}} bg-gray-100">{{$u.State}}</span>
+  {{if $u.SupersedesID}}<span class="text-xs text-gray-500 ml-2">supersedes unit #{{deref $u.SupersedesID}}</span>{{end}}
+  {{if knowledgeEngineerInsufficient $u.NominatedBy (derefInt $u.NPresent)}}
+  <span class="px-2 py-0.5 rounded text-xs bg-orange-100 text-orange-700 ml-2">engineer-nominated · chưa đủ dữ liệu</span>
+  {{end}}
+</div>
+<p class="text-gray-700 mb-4">{{$u.Title}}</p>
+
+<div class="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800 mb-4">
+  Quan sát tương quan, KHÔNG phải thí nghiệm đối chứng — số liệu có thể do hồi quy về trung bình (regression-to-mean), không chỉ do nguyên nhân đề cử.
+</div>
+
+<div class="grid md:grid-cols-2 gap-4 mb-4">
+  <div class="bg-white border rounded-lg p-4">
+    <div class="text-xs text-gray-500 mb-1">Có mặt (present) — recompute live</div>
+    <div class="text-lg font-semibold">{{.PresentCI}}</div>
+  </div>
+  <div class="bg-white border rounded-lg p-4">
+    <div class="text-xs text-gray-500 mb-1">Vắng mặt (absent) — recompute live</div>
+    <div class="text-lg font-semibold">{{.AbsentCI}}</div>
+  </div>
+</div>
+
+{{if eq $u.Kind "rule"}}
+  {{if ruleIntentRetire $u.Name}}
+  <div class="text-sm font-bold text-red-700 bg-red-50 border-2 border-red-300 rounded p-2 mb-2">
+    ⚠️ ĐỀ XUẤT TẮT RULE — duyệt publish sẽ set enabled=0 cho rule #{{deref $u.RefID}}.
+  </div>
+  {{else if ruleIntentScopeUp $u.Name}}
+  <div class="text-sm font-bold text-orange-700 bg-orange-50 border-2 border-orange-300 rounded p-2 mb-2">
+    ⚠️ NÂNG SCOPE — duyệt publish sẽ nâng rule #{{deref $u.RefID}} lên scope company/global.
+  </div>
+  {{end}}
+{{end}}
+
+{{if $u.ContentHash}}
+<div class="text-xs text-gray-500 mb-1">sha256: <code>{{$u.ContentHash}}</code></div>
+{{end}}
+{{if $u.RefKind}}
+<div class="text-xs text-gray-500 mb-2">ref: {{$u.RefKind}} #{{deref $u.RefID}}{{if $u.Layer}} · layer {{$u.Layer}}/{{$u.LayerTarget}}{{end}}</div>
+{{end}}
+{{if $u.Body}}
+<div class="text-xs text-gray-500 mb-1">Toàn bộ nội dung (không rút gọn):</div>
+<pre class="text-xs leading-5 bg-gray-50 border rounded p-3 overflow-y-auto whitespace-pre-wrap mb-4" style="max-height:420px">{{$u.Body}}</pre>
+{{end}}
+
+{{if $u.ProvenanceRun}}
+<div class="text-xs text-gray-500 mb-1">Provenance — {{len $u.ProvenanceRun}} run:</div>
+<div class="flex flex-wrap gap-2 mb-4">
+  {{range $u.ProvenanceRun}}
+  <a class="text-blue-600 hover:underline font-mono text-xs" href="/runs/{{.}}">{{short .}}</a>
+  {{end}}
+</div>
+{{end}}
+
+{{if .IsAdmin}}
+<div class="flex flex-wrap gap-2 mt-4">
+  {{if eq $u.State "nominated"}}
+  <form method="post" action="/knowledge/unit/{{$u.ID}}/submit">
+    <button class="bg-blue-700 text-white px-3 py-1 rounded text-sm">Đưa vào review</button>
+  </form>
+  {{end}}
+  {{if or (eq $u.State "nominated") (eq $u.State "in_review")}}
+  <form method="post" action="/knowledge/unit/{{$u.ID}}/reject" class="flex gap-2">
+    <input name="note" placeholder="lý do từ chối (bắt buộc)" required class="border rounded px-2 py-1 text-sm">
+    <button class="bg-red-600 text-white px-3 py-1 rounded text-sm">Từ chối</button>
+  </form>
+  {{end}}
+  {{if eq $u.State "in_review"}}
+    {{if eq $u.RefKind "retire_target"}}
+    <span class="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded px-2 py-1">
+      Đề xuất retire — không thể publish. Vào <a class="underline" href="/knowledge/unit/{{deref $u.RefID}}">unit #{{deref $u.RefID}}</a> để đề xuất retire trực tiếp.
+    </span>
+    {{else if .OpenRequestPending}}
+    <span class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">Đang chờ duyệt tại /reviews</span>
+    {{else}}
+    <form method="post" action="/knowledge/unit/{{$u.ID}}/publish-request">
+      <button class="bg-green-600 text-white px-3 py-1 rounded text-sm">Duyệt publish (gửi /reviews)</button>
+    </form>
+    {{end}}
+  {{end}}
+  {{if or (eq $u.State "published") (eq $u.State "adopted") (eq $u.State "measured")}}
+    {{if $u.Required}}
+      <span class="text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-2 py-1">Đang bắt buộc (mandate)</span>
+    {{else if .OpenMandateRequestPending}}
+      <span class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">Đề xuất mandate đang chờ duyệt</span>
+    {{else}}
+      <form method="post" action="/knowledge/unit/{{$u.ID}}/mandate-request">
+        <button class="bg-indigo-700 text-white px-3 py-1 rounded text-sm">Đề xuất mandate (bắt buộc compliance)</button>
+      </form>
+    {{end}}
+    {{if .OpenRetireRequestPending}}
+      <span class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">Đề xuất retire đang chờ duyệt</span>
+    {{else}}
+      <form method="post" action="/knowledge/unit/{{$u.ID}}/retire-request">
+        <button class="bg-red-700 text-white px-3 py-1 rounded text-sm">Đề xuất retire</button>
+      </form>
+    {{end}}
+  {{end}}
+</div>
+{{end}}
+{{end}}

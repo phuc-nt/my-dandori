@@ -1,6 +1,7 @@
 package slack
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -194,6 +195,43 @@ func TestApproverWhitelist(t *testing.T) {
 	st.DB.QueryRow(`SELECT decided_by FROM approvals WHERE id=1`).Scan(&by)
 	if !strings.Contains(by, "U-BOSS") {
 		t.Errorf("decided_by must record the whitelisted user id: %q", by)
+	}
+}
+
+// F1 CRITICAL: a knowledge-* approval (web-only decide surface) must never
+// be posted to Slack, and even if one somehow acquired a slack_ts, a
+// reaction against it must never resolve the approval — the whole point is
+// that a one-tap emoji cannot approve a skill/context/rule/playbook publish
+// without the reviewer having read the full pinned body at /reviews.
+func TestKnowledgeApprovalNeverPostedOrResolvedViaSlack(t *testing.T) {
+	st, guard := liveEnv(t)
+	client, fake := newFake(t)
+	b := &ApprovalBridge{St: st, Client: client, Guard: guard, Channel: "C1", ConsoleURL: "http://x"}
+
+	testseed.Agent(t, st, "a1")
+	testseed.Run(t, st, "r1", "a1", "running", 0, 0)
+	st.DB.Exec(`INSERT INTO approvals(run_id, action, reason, requested_at)
+		VALUES('r1','observer:knowledge-publish:skill:demo-skill','skill publish', ?)`, store.Now())
+
+	b.Tick() // postNew must skip this row entirely
+	if len(fake.posts) != 0 {
+		t.Fatalf("knowledge approval was posted to slack: %v", fake.posts)
+	}
+	var ts sql.NullString
+	st.DB.QueryRow(`SELECT slack_ts FROM approvals WHERE id=1`).Scan(&ts)
+	if ts.Valid {
+		t.Fatalf("knowledge approval acquired a slack_ts=%q, want NULL (never posted)", ts.String)
+	}
+
+	// Belt-and-suspenders: even if some other path stamped a slack_ts on it,
+	// pollReactions' blacklist must still refuse to resolve it.
+	st.DB.Exec(`UPDATE approvals SET slack_ts = '999.111' WHERE id = 1`)
+	fake.reactions = []Reaction{{Name: "white_check_mark", Users: []string{"U123"}}}
+	b.Tick()
+	var status string
+	st.DB.QueryRow(`SELECT status FROM approvals WHERE id=1`).Scan(&status)
+	if status != "pending" {
+		t.Errorf("knowledge approval status=%q, want still pending — slack reaction must never decide it (F1)", status)
 	}
 }
 

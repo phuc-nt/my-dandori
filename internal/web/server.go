@@ -264,6 +264,7 @@ func (s *Server) routes() {
 	s.registerPhase03Routes()
 	s.registerPhase05Routes()
 	s.registerPhase06Routes()
+	s.registerKnowledgeRoutes()
 }
 
 func (s *Server) Handler() http.Handler { return s.mux }

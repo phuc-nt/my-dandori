@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -98,29 +99,46 @@ func TestRunsPagination(t *testing.T) {
 
 var _ = store.Now
 
-func TestPlaybookSaveAndList(t *testing.T) {
+// TestPlaybookCreateNominatesNotInserts (H3) proves the viewer-facing
+// "save this run as a playbook" button no longer bypasses review: it must
+// nominate a kind=playbook knowledge_units row (redirect to the unit detail
+// page) and must NOT insert directly into playbooks.
+func TestPlaybookCreateNominatesNotInserts(t *testing.T) {
 	s := testServer(t)
 	testseed.Agent(t, s.Store, "a1")
 	testseed.Run(t, s.Store, "pb-r1", "a1", "done", 1, 2.0)
 	testseed.Event(t, s.Store, "pb-r1", "tool_use", "Edit", -1, `{"file_path":"api/users.go"}`)
-	testseed.Event(t, s.Store, "pb-r1", "tool_use", "Read", -1, `{"file_path":"api/users.go"}`)
-	testseed.Event(t, s.Store, "pb-r1", "tool_use", "Read", -1, `{"file_path":"docs/spec.md"}`)
 
 	rec := postForm(t, s, "/runs/pb-r1/playbook", url.Values{"name": {"user-api pattern"}, "notes": {"good run"}})
 	if rec.Code != 303 {
-		t.Fatalf("save playbook → %d", rec.Code)
+		t.Fatalf("nominate playbook → %d", rec.Code)
 	}
-	var topFiles string
-	s.Store.DB.QueryRow(`SELECT top_files FROM playbooks WHERE name='user-api pattern'`).Scan(&topFiles)
-	if !strings.Contains(topFiles, "api/users.go") {
-		t.Errorf("top files: %s", topFiles)
+	loc := rec.Header().Get("Location")
+	if !strings.HasPrefix(loc, "/knowledge/unit/") {
+		t.Errorf("redirect location = %q, want /knowledge/unit/{id}", loc)
 	}
-	rec = get(t, s, "/playbooks")
+	var pbCount int
+	s.Store.DB.QueryRow(`SELECT count(*) FROM playbooks`).Scan(&pbCount)
+	if pbCount != 0 {
+		t.Errorf("playbooks table must stay empty until knowledge-publish is approved, got %d rows", pbCount)
+	}
+	var kuCount int
+	var title, state string
+	s.Store.DB.QueryRow(`SELECT count(*), title, state FROM knowledge_units WHERE kind='playbook'`).Scan(&kuCount, &title, &state)
+	if kuCount != 1 || title != "user-api pattern" || state != "nominated" {
+		t.Errorf("knowledge_units playbook row: count=%d title=%q state=%q", kuCount, title, state)
+	}
+	rec = get(t, s, "/knowledge?kind=playbook")
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "user-api pattern") {
-		t.Errorf("playbooks page: %d", rec.Code)
+		t.Errorf("knowledge queue page: %d", rec.Code)
 	}
 	if rec := postForm(t, s, "/runs/pb-r1/playbook", url.Values{}); rec.Code != 400 {
 		t.Errorf("nameless playbook → %d, want 400", rec.Code)
+	}
+	// A second nominate for the SAME run must be rejected as a duplicate draft
+	// (M1/H3), not silently create a second competing knowledge_units row.
+	if rec := postForm(t, s, "/runs/pb-r1/playbook", url.Values{"name": {"another name"}}); rec.Code != http.StatusConflict {
+		t.Errorf("duplicate nominate → %d, want 409", rec.Code)
 	}
 }
 
