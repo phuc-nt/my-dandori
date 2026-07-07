@@ -17,6 +17,16 @@ func (s *Server) registerKnowledgeRoutes() {
 	s.mux.Get("/knowledge/unit/{id}", s.handleKnowledgeUnit)
 	s.mux.Post("/knowledge/nominate", s.handleKnowledgeNominate) // viewer-ok (F9)
 
+	// Mining Queue (v13 P1): read-only tab (viewer-ok) + one reading-list-only
+	// dismiss write (M2 — no governance-suppression power, never audited).
+	s.mux.Get("/knowledge/mining", s.handleKnowledgeMining)
+	s.mux.Post("/knowledge/mining/{runID}/dismiss", s.handleKnowledgeMiningDismiss)
+
+	// LLM-Draft Assistant (v13 P3): member+ (viewer blocked — spends
+	// OpenRouter tokens on every call, unlike every other viewer-ok route
+	// on this page).
+	s.mux.Post("/knowledge/draft", s.requireNotViewer(s.handleKnowledgeDraft))
+
 	// P4 suggest surface: read-only fragment (any authenticated operator) +
 	// viewer-ok adopt-intent click (mirrors playbook-adopt's own viewer-ok
 	// write — recording "I intend to use this" carries no external side

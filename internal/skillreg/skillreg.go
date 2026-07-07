@@ -178,7 +178,7 @@ func ApproveHash(st *store.Store, unitID int64) (string, error) {
 	if u == nil {
 		return "", fmt.Errorf("unit %d not found", unitID)
 	}
-	subject := learn.KindSkill + ":" + u.Name
+	subject := u.Kind + ":" + u.Name
 	rows, err := st.Read().Query(
 		`SELECT COALESCE(detail,'') FROM audit_log WHERE action = ? AND subject = ? ORDER BY id DESC`,
 		"knowledge_published", subject)
@@ -187,7 +187,7 @@ func ApproveHash(st *store.Store, unitID int64) (string, error) {
 	}
 	defer rows.Close()
 
-	var newestHash string   // first (newest) row with a content_hash at all — pre-fix fallback
+	var newestHash string // first (newest) row with a content_hash at all — pre-fix fallback
 	haveNewestHash := false
 	for rows.Next() {
 		var detail string

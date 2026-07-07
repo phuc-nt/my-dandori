@@ -202,6 +202,13 @@ func (s *Server) render(w http.ResponseWriter, req *http.Request, page string, d
 		if _, set := m["IsAdmin"]; !set {
 			m["IsAdmin"] = IsAdmin(req)
 		}
+		// LLM-Draft Assistant (v13 P3): the "Soạn nháp (AI)" button is
+		// key-gated everywhere it can appear (mining tab, run detail) —
+		// centralized here like IsAdmin/Mode so no handler has to remember
+		// to pass it, and no template needs Server/Cfg access it doesn't have.
+		if _, set := m["OpenRouterKeySet"]; !set {
+			m["OpenRouterKeySet"] = s.Cfg.OpenRouterKey != ""
+		}
 		// The exec sidebar shows a "cần duyệt" badge on every exec page.
 		if m["Mode"] == "exec" {
 			if _, set := m["InboxCount"]; !set {
@@ -235,6 +242,9 @@ func (s *Server) renderFragment(w http.ResponseWriter, req *http.Request, page, 
 	if m, ok := data.(map[string]any); ok {
 		if _, set := m["IsAdmin"]; !set {
 			m["IsAdmin"] = IsAdmin(req)
+		}
+		if _, set := m["OpenRouterKeySet"]; !set {
+			m["OpenRouterKeySet"] = s.Cfg.OpenRouterKey != ""
 		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

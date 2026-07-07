@@ -114,6 +114,12 @@
 </div>
 
 <div class="mb-6">
+  {{if .OpenRouterKeySet}}
+  <button class="text-purple-600 hover:underline text-xs mb-2"
+          hx-post="/knowledge/draft" hx-vals='{"run_id": "{{.Run.ID}}"}'
+          hx-target="#ai-draft-target-{{.Run.ID}}" hx-swap="innerHTML">Soạn nháp practice (AI)</button>
+  <div id="ai-draft-target-{{.Run.ID}}"></div>
+  {{end}}
   {{template "run_nominate_form" .}}
 </div>
 

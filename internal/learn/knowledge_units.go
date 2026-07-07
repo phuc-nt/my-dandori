@@ -112,7 +112,7 @@ func ValidSlug(name string) bool {
 
 func validKind(k string) bool {
 	switch k {
-	case KindContext, KindRule, KindPlaybook, KindSkill:
+	case KindContext, KindRule, KindPlaybook, KindSkill, KindKit:
 		return true
 	}
 	return false
@@ -142,6 +142,18 @@ type NominateParams struct {
 	Stats         StatsSnapshot
 	ProvenanceRun []string
 	NominatedBy   string
+	// Origin labels how this unit came to exist (v13 anti-Goodhart badge):
+	// "human" (default — empty string here means the DB DEFAULT 'human'
+	// applies, migration 017), "import-memory"/"import-journal" (dandori
+	// knowledge import), "ai-draft" (LLM-draft assistant, P3 — OriginModel
+	// carries the model id), or "detector" (auto-nominated candidates).
+	Origin      string
+	OriginModel string
+	// TransitionNote overrides the default "nominated" note recorded on the
+	// detected→nominated transition row (YAGNI: no new column — the spec
+	// asks for "source path in transition note," and knowledge_transitions.
+	// note already exists for exactly this purpose). Empty keeps the default.
+	TransitionNote string
 }
 
 // NominateUnit creates a new pipeline row in state=nominated. INTERNAL write
@@ -269,21 +281,34 @@ func NominateUnit(st *store.Store, p NominateParams) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	// Empty Origin resolves to "human" in Go rather than relying on the DB
+	// column DEFAULT (migration 017): the INSERT below always names the
+	// origin column explicitly, and an explicit NULL bound to a DEFAULT
+	// column does NOT trigger the DEFAULT in SQLite — only omitting the
+	// column from the statement does. Resolving here keeps one clear source
+	// of truth (Go, not SQL-engine DEFAULT semantics) for "no origin passed
+	// == human".
+	origin := p.Origin
+	if origin == "" {
+		origin = "human"
+	}
 	res, err := tx.Exec(`INSERT INTO knowledge_units(
 			kind, name, title, state, version_n, supersedes_id,
 			ref_kind, ref_id, body, content_hash, layer, layer_target, required,
 			n_present, n_absent, done_present, done_absent,
 			ci_present_lo, ci_present_hi, ci_absent_lo, ci_absent_hi,
 			cost_present, cost_absent, provenance_run_ids, nominated_by,
+			origin, origin_model,
 			created_at, updated_at)
 		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0,
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.Kind, p.Name, p.Title, StateNominated, nextN, supersedes,
 		nullStrIf(p.RefKind), nullInt64If(p.RefID), nullStrIf(p.Body), contentHashIf(p.Kind, p.Body),
 		nullStrIf(p.Layer), nullStrIf(p.LayerTarget),
 		p.Stats.NPresent, p.Stats.NAbsent, p.Stats.DonePresent, p.Stats.DoneAbsent,
 		p.Stats.CIPresentLo, p.Stats.CIPresentHi, p.Stats.CIAbsentLo, p.Stats.CIAbsentHi,
 		p.Stats.CostPresent, p.Stats.CostAbsent, string(prov), p.NominatedBy,
+		origin, nullStrIf(p.OriginModel),
 		now, now)
 	if err != nil {
 		if isUniqueViolation(err) {
@@ -292,7 +317,11 @@ func NominateUnit(st *store.Store, p NominateParams) (int64, error) {
 		return 0, err
 	}
 	id, _ := res.LastInsertId()
-	if err := recordTransitionTx(tx, id, StateDetected, StateNominated, p.NominatedBy, "nominated"); err != nil {
+	note := p.TransitionNote
+	if note == "" {
+		note = "nominated"
+	}
+	if err := recordTransitionTx(tx, id, StateDetected, StateNominated, p.NominatedBy, note); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {

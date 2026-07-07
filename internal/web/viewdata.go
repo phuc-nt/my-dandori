@@ -62,6 +62,18 @@ type ApprovalRow struct {
 	// source of truth, same one /knowledge/unit/{id} itself reads).
 	KnowledgeUnitID int64
 	KnowledgeCI     string
+	// KnowledgeOrigin/KnowledgeOriginModel (v13 P2 anti-Goodhart badge) are the
+	// PINNED origin fields (same pin rationale as KnowledgeBody above) so a
+	// reviewer approving at /reviews sees who/what authored the content —
+	// human, imported, ai-draft (+model), or detector — before approving.
+	KnowledgeOrigin      string
+	KnowledgeOriginModel string
+	// KnowledgeKitFiles (P4) carries the per-file rows for a kind=kit approval
+	// — path/size for the manifest list, full body for expand — recomputed
+	// from knowledge_kit_files at render time so the list a reviewer sees
+	// always matches the SAME rows the applier will re-verify against the
+	// pinned manifest hash (H1). Empty for every non-kit action.
+	KnowledgeKitFiles []learn.KitFileRow
 }
 
 // BudgetRow shows a budget scope with its live spend and end-of-month
@@ -238,6 +250,8 @@ func (s *Server) loadKnowledgeEvidence(a *ApprovalRow) {
 		Layer       string `json:"layer"`
 		LayerTarget string `json:"layer_target"`
 		RuleIntent  string `json:"rule_intent"`
+		Origin      string `json:"origin"`
+		OriginModel string `json:"origin_model"`
 	}
 	if err := json.Unmarshal([]byte(evidence), &ev); err != nil {
 		return
@@ -250,6 +264,18 @@ func (s *Server) loadKnowledgeEvidence(a *ApprovalRow) {
 	a.KnowledgeLayer = ev.Layer
 	a.KnowledgeLayerTarget = ev.LayerTarget
 	a.KnowledgeRuleIntent = ev.RuleIntent
+	a.KnowledgeOrigin = ev.Origin
+	a.KnowledgeOriginModel = ev.OriginModel
+	// P4 H1: kit's real per-file bodies live outside the pinned evidence blob
+	// (the blob only carries the manifest as Body) — load the SAME
+	// knowledge_kit_files rows the applier will re-verify against, so a
+	// reviewer approving KnowledgeContentHash can also expand and read every
+	// file it covers.
+	if ev.Kind == learn.KindKit && ev.UnitID != 0 {
+		if files, err := learn.KitFiles(s.Store, ev.UnitID); err == nil {
+			a.KnowledgeKitFiles = files
+		}
+	}
 	// M4: CI/stats line, read from the live unit row (single source of truth
 	// for stats — the evidence blob only pins body/hash, not the numbers).
 	if ev.UnitID != 0 {

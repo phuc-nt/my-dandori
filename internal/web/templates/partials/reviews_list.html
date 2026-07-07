@@ -36,6 +36,7 @@
     <div class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mt-3 mb-1">
       Tri thức <strong>{{.KnowledgeKind}}</strong> · <code>{{.KnowledgeName}}</code>{{if .KnowledgeLayer}} · layer {{.KnowledgeLayer}}/{{.KnowledgeLayerTarget}}{{end}} — quyết định CHỈ tại web (không qua Slack).
       {{if .KnowledgeUnitID}}<a class="text-blue-600 hover:underline ml-1" href="/knowledge/unit/{{.KnowledgeUnitID}}">xem chi tiết unit #{{.KnowledgeUnitID}}</a>{{end}}
+      <span class="ml-1">{{template "origin_badge" dict "Origin" .KnowledgeOrigin "OriginModel" .KnowledgeOriginModel}}</span>
     </div>
     {{if eq .KnowledgeRuleIntent "retire"}}
     <div class="text-sm font-bold text-red-700 bg-red-50 border-2 border-red-300 rounded p-2 mt-1 mb-1">
@@ -50,9 +51,24 @@
     <div class="text-xs text-gray-500 mb-1">{{.KnowledgeCI}}</div>
     {{end}}
     {{if .KnowledgeContentHash}}
-    <div class="text-xs text-gray-500 mb-1">sha256: <code>{{.KnowledgeContentHash}}</code></div>
+    <div class="text-xs text-gray-500 mb-1">
+      {{if eq .KnowledgeKind "kit"}}manifest sha256 (đang duyệt toàn bộ manifest này):{{else}}sha256:{{end}}
+      <code>{{.KnowledgeContentHash}}</code>
+    </div>
     {{end}}
-    {{if .KnowledgeBody}}
+    {{if eq .KnowledgeKind "kit"}}
+    {{if .KnowledgeKitFiles}}
+    <div class="text-xs text-gray-500 mb-1">{{len .KnowledgeKitFiles}} file trong kit (mỗi file dưới đây được applier re-verify hash so với manifest đã ghim):</div>
+    <div class="border rounded divide-y text-xs" style="max-height:320px; overflow-y:auto">
+      {{range .KnowledgeKitFiles}}
+      <details class="p-2">
+        <summary class="cursor-pointer font-mono">{{.Path}} <span class="text-gray-400">({{.Size}} bytes)</span></summary>
+        <pre class="mt-2 leading-5 bg-gray-50 border rounded p-2 whitespace-pre-wrap">{{.Body}}</pre>
+      </details>
+      {{end}}
+    </div>
+    {{end}}
+    {{else if .KnowledgeBody}}
     <div class="text-xs text-gray-500 mb-1">Toàn bộ nội dung đã ghim (không rút gọn):</div>
     <pre class="text-xs leading-5 bg-gray-50 border rounded p-3 overflow-y-auto whitespace-pre-wrap" style="max-height:320px">{{.KnowledgeBody}}</pre>
     {{end}}

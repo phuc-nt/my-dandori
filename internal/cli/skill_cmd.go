@@ -157,6 +157,25 @@ var skillPullCmd = &cobra.Command{
 		}
 
 		fmt.Fprintf(cmd.OutOrStdout(), "pulled %q → %s\n", s.Name, target)
+		// v13 P2 anti-Goodhart badge: surface origin on pull output too, not
+		// just the web UI, so a CLI-only operator sees whether they just
+		// pulled human-authored, imported, ai-drafted, or detector content.
+		// Best-effort — skillreg.Skill is deliberately narrower than
+		// learn.KnowledgeUnit (doesn't carry Origin), so re-read the unit row
+		// directly rather than widening that package's public type for one
+		// CLI-only line; a lookup failure here must never fail the pull
+		// itself (the write+audit above already succeeded).
+		if u, uErr := learn.GetUnit(st, s.UnitID); uErr == nil && u != nil {
+			origin := u.Origin
+			if origin == "" {
+				origin = "human"
+			}
+			if origin == "ai-draft" && u.OriginModel != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "origin: %s · %s (human-edited & approved)\n", origin, u.OriginModel)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "origin: %s\n", origin)
+			}
+		}
 		return nil
 	},
 }

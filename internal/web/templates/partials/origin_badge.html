@@ -1,0 +1,29 @@
+{{/* origin_badge (v13 P2, single source — P3 references read-only) renders
+     the anti-Goodhart provenance label that follows a knowledge_units row
+     end-to-end. Call with the unit's Origin + OriginModel strings, e.g.
+     {{template "origin_badge" dict "Origin" $u.Origin "OriginModel" $u.OriginModel}}.
+     For "ai-draft", OriginModel is shown alongside when present so a
+     reviewer sees WHICH model drafted the content, not just that one did. */}}
+{{define "origin_badge"}}
+{{if eq .Origin "ai-draft"}}
+  <span class="inline-block px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700" title="origin: ai-draft (human-edited &amp; approved)">
+    origin: ai-draft{{if .OriginModel}} · {{.OriginModel}}{{end}} (human-edited &amp; approved)
+  </span>
+{{else if eq .Origin "import-memory"}}
+  <span class="inline-block px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700" title="origin: import-memory">
+    origin: import-memory
+  </span>
+{{else if eq .Origin "import-journal"}}
+  <span class="inline-block px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700" title="origin: import-journal">
+    origin: import-journal
+  </span>
+{{else if eq .Origin "detector"}}
+  <span class="inline-block px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600" title="origin: detector">
+    origin: detector
+  </span>
+{{else}}
+  <span class="inline-block px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600" title="origin: human">
+    origin: human
+  </span>
+{{end}}
+{{end}}

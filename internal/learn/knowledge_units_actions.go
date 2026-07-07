@@ -86,12 +86,19 @@ type unitActionParams struct {
 	Layer       string `json:"layer,omitempty"`
 	LayerTarget string `json:"layer_target,omitempty"`
 	RuleIntent  string `json:"rule_intent,omitempty"`
+	// Origin/OriginModel (v13 P2 anti-Goodhart badge) are PINNED here the same
+	// way Body/ContentHash are (F1 rationale above) so the /reviews card can
+	// show a reviewer who/what authored the content at approval time, without
+	// re-reading the live (possibly since-changed) knowledge_units row.
+	Origin      string `json:"origin,omitempty"`
+	OriginModel string `json:"origin_model,omitempty"`
 }
 
 func actionParams(u *KnowledgeUnit) map[string]any {
 	p := unitActionParams{
 		UnitID: u.ID, Kind: u.Kind, Name: u.Name,
 		RefKind: u.RefKind, Layer: u.Layer, LayerTarget: u.LayerTarget,
+		Origin: u.Origin, OriginModel: u.OriginModel,
 	}
 	if u.RefID != nil {
 		p.RefID = *u.RefID

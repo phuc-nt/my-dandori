@@ -62,6 +62,70 @@ func TestNominateSubmitReject(t *testing.T) {
 	}
 }
 
+// TestNominateOriginRoundTrip is the M3 lockstep proof: unitSelectCols +
+// KnowledgeUnit struct fields + scanUnit's positional Scan targets must all
+// agree on column order/count, or this panics on Scan instead of merely
+// failing an assertion. Must be green before anything else in v13 P2 reads a
+// unit.
+func TestNominateOriginRoundTrip(t *testing.T) {
+	st := testStore(t)
+
+	// Explicit origin + origin_model round-trips exactly.
+	id, err := NominateUnit(st, NominateParams{
+		Kind: KindSkill, Name: "draft-skill", Title: "Drafted skill",
+		Body: "# body", NominatedBy: "operator1",
+		Origin: "ai-draft", OriginModel: "anthropic/claude-3.5",
+	})
+	if err != nil {
+		t.Fatalf("nominate: %v", err)
+	}
+	u, err := GetUnit(st, id)
+	if err != nil || u == nil {
+		t.Fatalf("GetUnit: %+v err=%v", u, err)
+	}
+	if u.Origin != "ai-draft" {
+		t.Errorf("Origin = %q, want ai-draft", u.Origin)
+	}
+	if u.OriginModel != "anthropic/claude-3.5" {
+		t.Errorf("OriginModel = %q, want anthropic/claude-3.5", u.OriginModel)
+	}
+	// Every OTHER field must still line up (proves the column-count lockstep,
+	// not just that Origin happens to read back correctly).
+	if u.Title != "Drafted skill" || u.Body != "# body" || u.NominatedBy != "operator1" {
+		t.Errorf("other fields shifted after adding origin cols: %+v", u)
+	}
+
+	// Empty Origin resolves to "human" (DB-default-equivalent), never blank
+	// or NULL-scanned-as-zero-value-that-happens-to-look-right.
+	id2, err := NominateUnit(st, NominateParams{
+		Kind: KindContext, Name: "plain-note", Title: "Plain",
+		RefKind: "context_version", RefID: 1, NominatedBy: "operator2",
+	})
+	if err != nil {
+		t.Fatalf("nominate2: %v", err)
+	}
+	u2, _ := GetUnit(st, id2)
+	if u2.Origin != "human" {
+		t.Errorf("default Origin = %q, want human", u2.Origin)
+	}
+	if u2.OriginModel != "" {
+		t.Errorf("default OriginModel = %q, want empty", u2.OriginModel)
+	}
+
+	// ListUnits must scan the same way as GetUnit (both call scanUnit).
+	units, err := ListUnits(st, StateNominated)
+	if err != nil {
+		t.Fatalf("ListUnits: %v", err)
+	}
+	found := map[int64]string{}
+	for _, uu := range units {
+		found[uu.ID] = uu.Origin
+	}
+	if found[id] != "ai-draft" || found[id2] != "human" {
+		t.Errorf("ListUnits origin mismatch: %+v", found)
+	}
+}
+
 func TestNominateInvalidSlugRejected(t *testing.T) {
 	st := testStore(t)
 	for _, bad := range []string{"Has-Upper", "-leading-dash", "has space", "under_score", ""} {

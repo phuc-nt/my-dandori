@@ -1,9 +1,12 @@
 package web
 
 import (
+	"database/sql"
 	"fmt"
+	"html/template"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -102,7 +105,74 @@ func (s *Server) handleKnowledgeUnit(w http.ResponseWriter, r *http.Request) {
 		"OpenMandateRequestPending": s.openKnowledgeRequestType(u.ID, "knowledge-mandate"),
 		"OpenRetireRequestPending":  s.openKnowledgeRequestType(u.ID, "knowledge-retire"),
 	}
+	// P4: kit's Body column is only the manifest — the real per-file content
+	// lives in knowledge_kit_files, loaded here (not the review-queue path)
+	// so /knowledge/unit/:id can show the manifest path+size list AND expand
+	// full per-file bodies, recomputed from these SAME rows on every render.
+	if u.Kind == learn.KindKit {
+		files, err := learn.KitFiles(s.Store, u.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		data["KitFiles"] = files
+		// Version bump: show a per-file diff against the superseded version so
+		// a reviewer can see exactly what changed, not just the new manifest.
+		if u.SupersedesID != nil {
+			prevFiles, err := learn.KitFiles(s.Store, *u.SupersedesID)
+			if err == nil && len(prevFiles) > 0 {
+				data["KitDiff"] = buildKitDiff(prevFiles, files, *u.SupersedesID, u.ID)
+			}
+		}
+	}
 	s.render(w, r, "knowledge", data)
+}
+
+// kitDiffEntry is one path's diff against the superseded version — Added/
+// Removed/Changed classify without needing a template to inspect two slices,
+// and DiffHTML is only computed for Changed (Added/Removed show the whole
+// body once, a diff against "" would just be a wall of + or - lines).
+type kitDiffEntry struct {
+	Path    string
+	Status  string // "added" | "removed" | "changed"
+	Body    string // full body for added/removed
+	DiffH   template.HTML
+	OldSize int
+	NewSize int
+}
+
+// buildKitDiff compares two kit versions' file sets by path, producing one
+// entry per path that differs (identical content_hash paths are omitted —
+// nothing to review there).
+func buildKitDiff(oldFiles, newFiles []learn.KitFileRow, oldUnitID, newUnitID int64) []kitDiffEntry {
+	oldByPath := make(map[string]learn.KitFileRow, len(oldFiles))
+	for _, f := range oldFiles {
+		oldByPath[f.Path] = f
+	}
+	newByPath := make(map[string]learn.KitFileRow, len(newFiles))
+	for _, f := range newFiles {
+		newByPath[f.Path] = f
+	}
+	var out []kitDiffEntry
+	for _, nf := range newFiles {
+		of, existed := oldByPath[nf.Path]
+		switch {
+		case !existed:
+			out = append(out, kitDiffEntry{Path: nf.Path, Status: "added", Body: nf.Body, NewSize: nf.Size})
+		case of.ContentHash != nf.ContentHash:
+			out = append(out, kitDiffEntry{
+				Path: nf.Path, Status: "changed", OldSize: of.Size, NewSize: nf.Size,
+				DiffH: contexthub.DiffHTML(of.Body, nf.Body,
+					fmt.Sprintf("unit #%d", oldUnitID), fmt.Sprintf("unit #%d", newUnitID)),
+			})
+		}
+	}
+	for _, of := range oldFiles {
+		if _, stillPresent := newByPath[of.Path]; !stillPresent {
+			out = append(out, kitDiffEntry{Path: of.Path, Status: "removed", Body: of.Body, OldSize: of.Size})
+		}
+	}
+	return out
 }
 
 // handleKnowledgeNominate lets ANY authenticated operator (viewer included,
@@ -110,6 +180,18 @@ func (s *Server) handleKnowledgeUnit(w http.ResponseWriter, r *http.Request) {
 // name-deduped BEFORE calling NominateUnit so a flood of junk from a
 // low-trust caller fails fast at the boundary instead of inside the learn
 // package's own tx.
+//
+// C2 (v13 P2, load-bearing for the whole anti-Goodhart origin badge): this
+// handler ALSO reads origin/origin_model/provenance_run_ids from the form —
+// prior to this fix every nomination landed origin='human' regardless of
+// what the form posted (import/draft callers included), so the badge never
+// persisted. provenance_run_ids is attacker-controllable (any authenticated
+// operator can nominate, F9) — each id is validated against a real `runs`
+// row before persist; ANY unknown id rejects the WHOLE nominate, so a
+// nominator cannot forge a "đã đúc" (minted-from-evidence) badge pointing at
+// a run that never produced this content. P3's draft-fill POSTs to this same
+// route (it fills origin=ai-draft + origin_model on the form) — it does not
+// edit this handler.
 func (s *Server) handleKnowledgeNominate(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, knowledgeMaxBodyBytes+4096) // +headroom for other form fields
 	if err := r.ParseForm(); err != nil {
@@ -122,6 +204,8 @@ func (s *Server) handleKnowledgeNominate(w http.ResponseWriter, r *http.Request)
 	body := r.FormValue("body")
 	layer := r.FormValue("layer")
 	layerTarget := r.FormValue("layer_target")
+	origin := r.FormValue("origin")
+	originModel := r.FormValue("origin_model")
 
 	if len(body) > knowledgeMaxBodyBytes {
 		http.Error(w, fmt.Sprintf("nội dung vượt giới hạn %d byte", knowledgeMaxBodyBytes), http.StatusBadRequest)
@@ -140,16 +224,68 @@ func (s *Server) handleKnowledgeNominate(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	provenance, err := s.parseProvenanceRunIDs(r.FormValue("provenance_run_ids"))
+	if err != nil {
+		s.contextBanner(w, err.Error())
+		return
+	}
+
 	p := learn.NominateParams{
 		Kind: kind, Name: name, Title: title, Body: body,
 		Layer: layer, LayerTarget: layerTarget,
-		NominatedBy: s.actor(r),
+		NominatedBy:   s.actor(r),
+		Origin:        origin,
+		OriginModel:   originModel,
+		ProvenanceRun: provenance,
 	}
 	if _, err := learn.NominateUnit(s.Store, p); err != nil {
 		s.contextBanner(w, err.Error())
 		return
 	}
 	w.Header().Set("HX-Refresh", "true")
+}
+
+// parseProvenanceRunIDs splits a comma/space-separated provenance_run_ids
+// form value and validates EACH id against a real `runs` row (C2) — this is
+// the attacker-controllable boundary: the field is free text on a form any
+// authenticated operator (viewer included, F9) can submit, so a nominator
+// could otherwise type in an arbitrary run id and forge a "đã đúc" badge on
+// evidence that never produced this content. ANY unknown id rejects the
+// WHOLE nominate (fail closed) rather than silently dropping the bad id and
+// keeping the good ones, which would let a nominator learn which ids are
+// real by trial and error while still getting a partial forged badge through.
+//
+// A genuinely unknown id (sql.ErrNoRows) is the only case labeled "forged" —
+// any OTHER error from the lookup (locked db, disk I/O, etc.) is a distinct
+// transient failure and must say so, not accuse the nominator of forgery for
+// a problem that is ours, not theirs.
+func (s *Server) parseProvenanceRunIDs(raw string) ([]string, error) {
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n'
+	})
+	if len(fields) == 0 {
+		return nil, nil
+	}
+	out := make([]string, 0, len(fields))
+	seen := map[string]bool{}
+	for _, f := range fields {
+		id := strings.TrimSpace(f)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		var exists int
+		err := s.Store.Read().QueryRow(`SELECT 1 FROM runs WHERE id = ?`, id).Scan(&exists)
+		switch {
+		case err == nil:
+			out = append(out, id)
+		case err == sql.ErrNoRows:
+			return nil, fmt.Errorf("provenance run id không tồn tại: %q — đề cử bị từ chối để tránh làm giả bằng chứng", id)
+		default:
+			return nil, fmt.Errorf("lỗi kiểm tra provenance run id %q: %w", id, err)
+		}
+	}
+	return out, nil
 }
 
 // handleKnowledgeSubmit moves a unit from nominated → in_review (admin-only,

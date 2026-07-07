@@ -1,0 +1,37 @@
+{{/* LLM-Draft Assistant (v13 P3): editable nominate-form fragment returned by
+     POST /knowledge/draft. Pre-filled with the AI draft when one was
+     produced; on ANY failure (OpenRouter down, empty response, budget,
+     model not configured, single-flight collision) .Model is empty and the
+     form renders with an empty, still-submittable body — fail-open, never a
+     dead end. POSTs to the existing /knowledge/nominate handler (P2-owned)
+     — this file never nominates directly, only supplies hidden fields. */}}
+{{define "ai_draft_nominate_form"}}
+<div class="bg-white border rounded-lg p-4" id="ai-draft-form-{{.RunID}}">
+  {{if .Model}}
+  <div class="bg-purple-50 border border-purple-200 rounded p-3 text-xs text-purple-800 mb-3">
+    Nháp do AI soạn ({{.Model}}) — bạn sửa và chịu trách nhiệm nội dung khi nominate.
+  </div>
+  {{else}}
+  <div class="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-800 mb-3">
+    Không soạn được, viết tay — bạn vẫn có thể đề cử practice này thủ công bên dưới.
+  </div>
+  {{end}}
+  <form method="post" action="/knowledge/nominate" class="grid md:grid-cols-6 gap-3 items-end">
+    <input type="hidden" name="kind" value="context">
+    {{if .Model}}
+    <input type="hidden" name="origin" value="ai-draft">
+    <input type="hidden" name="origin_model" value="{{.Model}}">
+    <input type="hidden" name="provenance_run_ids" value="{{.RunID}}">
+    {{end}}
+    <label class="text-sm md:col-span-2">Tên (slug)<br>
+      <input name="name" required pattern="[a-z0-9][a-z0-9-]*" placeholder="run-{{short .RunID}}" class="border rounded px-2 py-1 w-full font-mono"></label>
+    <label class="text-sm md:col-span-4">Tiêu đề<br>
+      <input name="title" required value="{{.Title}}" placeholder="mô tả ngắn cho practice này" class="border rounded px-2 py-1 w-full"></label>
+    <label class="text-sm md:col-span-6">Nội dung (bạn sửa trước khi đề cử)<br>
+      <textarea name="body" rows="10" class="border rounded px-2 py-1 w-full font-mono text-xs">{{.Body}}</textarea></label>
+    <div class="md:col-span-6">
+      <button class="bg-emerald-700 text-white px-4 py-2 rounded text-sm">Nominate — đề cử tri thức</button>
+    </div>
+  </form>
+</div>
+{{end}}

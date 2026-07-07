@@ -1,7 +1,9 @@
 package observer
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -136,6 +138,13 @@ func applyKnowledgePublish(st *store.Store, evidence string, insightID int64, de
 		// history for any entry whose hash happens to agree with the row.
 		detail = fmt.Sprintf("skill %q v%d published, unit_id=%d, content_hash=%s (insight #%d)", ev.Name, unit.VersionN, ev.UnitID, ev.ContentHash, insightID)
 	}
+	if ev.Kind == learn.KindKit {
+		// H1: subject is kit:<name> via ev.Kind+":"+ev.Name below — this
+		// detail line records the manifest hash the reviewer approved, the
+		// SAME independent audit source P5's (C1-fixed) ApproveHash reads,
+		// mirroring the skill branch above exactly.
+		detail = fmt.Sprintf("kit %q v%d published, unit_id=%d, content_hash=%s (insight #%d)", ev.Name, unit.VersionN, ev.UnitID, ev.ContentHash, insightID)
+	}
 	_, err = a.Append("knowledge_published", ev.Kind+":"+ev.Name, detail)
 	return err
 }
@@ -192,9 +201,65 @@ func gatedKnowledgeWriteTx(tx *sql.Tx, ev knowledgePublishParams, decidedBy, not
 			return errPermanentApply{fmt.Errorf("skill publish requires pinned body+content_hash (unit %d)", ev.UnitID)}
 		}
 		return nil
+	case learn.KindKit:
+		return verifyKitFilesTx(tx, ev)
 	default:
 		return errPermanentApply{fmt.Errorf("unknown knowledge kind %q (unit %d)", ev.Kind, ev.UnitID)}
 	}
+}
+
+// verifyKitFilesTx is the H1 enforcement point for kind=kit: the pinned
+// evidence (ev.Body/ev.ContentHash) is the manifest JSON + its hash the
+// reviewer approved at RequestPublish time. This re-parses that manifest and
+// re-reads knowledge_kit_files for the unit INSIDE the caller's tx, then
+// checks every file row's sha256(body) against the manifest's own recorded
+// content_hash for that path. A file row edited (or deleted, or added)
+// between RequestPublish and this apply — including a row tampered by
+// something other than the normal nominate path — surfaces here as a
+// mismatch and permanently fails the publish (errPermanentApply): kit never
+// gets a second, silent chance to publish drifted bytes under an
+// already-approved hash. No additional write happens here (mirrors skill:
+// the manifest is already the pinned unit body; publish only freezes state).
+func verifyKitFilesTx(tx *sql.Tx, ev knowledgePublishParams) error {
+	if ev.Body == "" || ev.ContentHash == "" {
+		return errPermanentApply{fmt.Errorf("kit publish requires pinned manifest body+content_hash (unit %d)", ev.UnitID)}
+	}
+	manifest, err := learn.ParseKitManifest(ev.Body)
+	if err != nil {
+		return errPermanentApply{fmt.Errorf("kit publish: pinned manifest unparseable (unit %d): %w", ev.UnitID, err)}
+	}
+
+	rows, err := tx.Query(`SELECT path, body FROM knowledge_kit_files WHERE unit_id = ?`, ev.UnitID)
+	if err != nil {
+		return err // transient — retry
+	}
+	defer rows.Close()
+
+	seen := make(map[string]bool, len(manifest.Files))
+	for rows.Next() {
+		var path, body string
+		if err := rows.Scan(&path, &body); err != nil {
+			return err // transient — retry
+		}
+		mf, ok := manifest.FileByPath(path)
+		if !ok {
+			return errPermanentApply{fmt.Errorf("kit publish: file %q present in knowledge_kit_files but not in pinned manifest (unit %d)", path, ev.UnitID)}
+		}
+		sum := sha256.Sum256([]byte(body))
+		if hex.EncodeToString(sum[:]) != mf.ContentHash {
+			return errPermanentApply{fmt.Errorf("kit publish: file %q content_hash mismatch vs pinned manifest — row tampered after approval (unit %d)", path, ev.UnitID)}
+		}
+		seen[path] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err // transient — retry
+	}
+	for _, mf := range manifest.Files {
+		if !seen[mf.Path] {
+			return errPermanentApply{fmt.Errorf("kit publish: file %q in pinned manifest but missing from knowledge_kit_files (unit %d)", mf.Path, ev.UnitID)}
+		}
+	}
+	return nil
 }
 
 // applyKnowledgeRuleWrite gates a new-or-updated guardrail rule into effect,

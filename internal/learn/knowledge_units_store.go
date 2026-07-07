@@ -38,8 +38,17 @@ type KnowledgeUnit struct {
 	CostAbsent    *float64
 	ProvenanceRun []string
 	NominatedBy   string
-	CreatedAt     string
-	UpdatedAt     string
+	// Origin + OriginModel (v13 anti-Goodhart badge) follow the unit end-to-
+	// end: "human" (default, pre-v13 rows and plain nominate) | "import-
+	// memory"/"import-journal" | "ai-draft" (OriginModel set) | "detector".
+	// COALESCE'd to 'human' at SELECT time (migration 017 has a DB DEFAULT,
+	// but a defensive COALESCE keeps GetUnit/ListUnits honest even against a
+	// future NULL). M3: added in lockstep with unitSelectCols + scanUnit —
+	// see scanUnit's doc comment for why order/count must never drift.
+	Origin      string
+	OriginModel string
+	CreatedAt   string
+	UpdatedAt   string
 }
 
 const unitSelectCols = `id, kind, name, title, state, version_n, supersedes_id,
@@ -48,12 +57,18 @@ const unitSelectCols = `id, kind, name, title, state, version_n, supersedes_id,
 	n_present, n_absent, done_present, done_absent,
 	ci_present_lo, ci_present_hi, ci_absent_lo, ci_absent_hi,
 	cost_present, cost_absent, COALESCE(provenance_run_ids,'[]'), COALESCE(nominated_by,''),
+	COALESCE(origin,'human'), COALESCE(origin_model,''),
 	created_at, updated_at`
 
 type rowScanner interface {
 	Scan(dest ...any) error
 }
 
+// scanUnit's Scan targets must stay in the EXACT same order/count as
+// unitSelectCols (M3 — the v11 F-fix column-count trap): adding a column to
+// one without the matching struct field + positional Scan target here breaks
+// EVERY unit read (/knowledge, /reviews, skill pull) with a
+// "sql: expected N destination arguments" panic-on-Scan, not a compile error.
 func scanUnit(row rowScanner) (KnowledgeUnit, error) {
 	var u KnowledgeUnit
 	var required int
@@ -64,6 +79,7 @@ func scanUnit(row rowScanner) (KnowledgeUnit, error) {
 		&u.NPresent, &u.NAbsent, &u.DonePresent, &u.DoneAbsent,
 		&u.CIPresentLo, &u.CIPresentHi, &u.CIAbsentLo, &u.CIAbsentHi,
 		&u.CostPresent, &u.CostAbsent, &prov, &u.NominatedBy,
+		&u.Origin, &u.OriginModel,
 		&u.CreatedAt, &u.UpdatedAt); err != nil {
 		return u, err
 	}
@@ -108,6 +124,41 @@ func GetUnit(st *store.Store, id int64) (*KnowledgeUnit, error) {
 		return nil, err
 	}
 	return &u, nil
+}
+
+// KitFileRow is one knowledge_kit_files row for review-UI/CLI rendering —
+// path+size for the manifest list, and the full body for on-demand expand
+// (both /reviews and /knowledge recompute their per-file display from these
+// SAME rows, per H1: the manifest hash being approved must always agree with
+// what a reviewer can expand and read).
+type KitFileRow struct {
+	Path        string
+	Body        string
+	ContentHash string
+	Size        int
+}
+
+// KitFiles loads every knowledge_kit_files row for unitID, ordered by path
+// (matching the canonical manifest order BuildKitManifest produces) — used by
+// the review UI (manifest list + per-file expand + version-bump diff) and
+// available to any future kit consumer that needs the real per-file bodies
+// rather than just the manifest's path/hash/size summary.
+func KitFiles(st *store.Store, unitID int64) ([]KitFileRow, error) {
+	rows, err := st.Read().Query(`SELECT path, body, content_hash, size FROM knowledge_kit_files
+		WHERE unit_id = ? ORDER BY path`, unitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []KitFileRow
+	for rows.Next() {
+		var f KitFileRow
+		if err := rows.Scan(&f.Path, &f.Body, &f.ContentHash, &f.Size); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
 }
 
 // transition validates the current state matches "from", writes the new

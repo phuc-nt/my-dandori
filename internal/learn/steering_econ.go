@@ -212,6 +212,13 @@ func classify(text string) string {
 	return "other"
 }
 
+// ClassifySteering is the exported wrapper around classify (v13 P3 —
+// internal/chat's draft assistant needs the same keyword-taxonomy label for
+// its evidence bundle but lives in a different package; this thin re-export
+// avoids duplicating the keyword table rather than justifying a new
+// unexported-to-exported promotion of the whole taxonomy).
+func ClassifySteering(text string) string { return classify(text) }
+
 // steeringTaxonomy reads every steering_msg text row (local mode only —
 // central mode never has per-message text to classify) ORDER BY id, applies
 // the keyword heuristic, and buckets sequence-index position by thirds

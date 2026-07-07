@@ -216,6 +216,54 @@ func TestApproveHashRejectsVersionDowngrade(t *testing.T) {
 	}
 }
 
+// publishKit mirrors publishSkill but for a kind=kit unit — reproduces the
+// C1 fix's target scenario: ApproveHash must key its audit lookup off
+// u.Kind (here "kit"), not a hardcoded learn.KindSkill, or a kit lineage's
+// "knowledge_published" entry (subject "kit:<name>") is never found.
+func publishKit(t *testing.T, st *store.Store, name, body string) (unitID int64, hash string) {
+	t.Helper()
+	id, err := learn.NominateUnit(st, learn.NominateParams{
+		Kind: learn.KindKit, Name: name, Title: name, Body: body, NominatedBy: "tester",
+	})
+	if err != nil {
+		t.Fatalf("nominate kit: %v", err)
+	}
+	if err := learn.SubmitForReview(st, id, "tester"); err != nil {
+		t.Fatalf("submit kit: %v", err)
+	}
+	if _, err := st.DB.Exec(`UPDATE knowledge_units SET state = ? WHERE id = ?`, learn.StatePublished, id); err != nil {
+		t.Fatalf("force-publish kit: %v", err)
+	}
+	sum := sha256.Sum256([]byte(body))
+	h := hex.EncodeToString(sum[:])
+	a := &govern.Audit{St: st, Actor: "tester"}
+	detail := fmt.Sprintf("kit %q v1 published, unit_id=%d, content_hash=%s (insight #1)", name, id, h)
+	if _, err := a.Append("knowledge_published", "kit:"+name, detail); err != nil {
+		t.Fatalf("audit append kit: %v", err)
+	}
+	return id, h
+}
+
+// TestApproveHashMatchesPublishForKit is the C1 regression test: before the
+// fix, ApproveHash hardcoded subject = learn.KindSkill+":"+u.Name, so a
+// kit-kind unit's lookup queried subject "skill:<name>" against an audit row
+// actually written under "kit:<name>" — always a miss. This proves the fix
+// (subject = u.Kind+":"+u.Name) makes kit lineage verifiable too, alongside
+// the skill test above (TestApproveHashMatchesPublish, unchanged, still
+// green — u.Kind=="skill" there makes the fix a no-op for that caller).
+func TestApproveHashMatchesPublishForKit(t *testing.T) {
+	st := openTestStore(t)
+	id, wantHash := publishKit(t, st, "hash-kit", `{"files":[]}`)
+
+	got, err := ApproveHash(st, id)
+	if err != nil {
+		t.Fatalf("ApproveHash (kit): %v", err)
+	}
+	if got != wantHash {
+		t.Errorf("ApproveHash (kit) = %s, want %s", got, wantHash)
+	}
+}
+
 func TestVerifyHappyPath(t *testing.T) {
 	st := openTestStore(t)
 	id, hash := publishSkill(t, st, "verify-ok", "verified body")
