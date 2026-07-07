@@ -100,6 +100,9 @@ var tmplFuncs = template.FuncMap{
 	// e.g. "75% (CI 30–95%, n=4)" — used everywhere a done-rate/acceptance
 	// ratio is shown (insights sections + F9 leaderboard/metrics surfaces).
 	"FormatWilson": learn.FormatWilson,
+	// markdown renders an untrusted markdown string (the chat assistant's
+	// reply) to sanitized HTML so tables/headings/bold display instead of raw.
+	"markdown": renderMarkdown,
 	// wilsonFromMetric reconstructs the (successes, n) pair a Metric only
 	// exposes as a pre-computed percent (learn.Metric.Value) + its RunIDs
 	// slice (one id per trial in the same denominator the percent was

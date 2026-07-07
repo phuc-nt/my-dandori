@@ -40,9 +40,12 @@ func (s *Server) handleChatMessage(w http.ResponseWriter, r *http.Request) {
 		answer = "Có lỗi khi gọi trợ lý: " + err.Error()
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// User bubble stays plain (escaped, pre-wrap); assistant reply is markdown
+	// (headings/tables/bold) rendered to sanitized HTML via renderMarkdown so
+	// it no longer shows raw `##`/`|` source. `chat-md` styles the rendered tags.
 	frag := `<div class="flex justify-end"><div class="bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2 my-1 max-w-[80%] whitespace-pre-wrap">` +
 		template.HTMLEscapeString(text) + `</div></div>` +
-		`<div class="flex"><div class="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-2 my-1 max-w-[80%] whitespace-pre-wrap">` +
-		template.HTMLEscapeString(answer) + `</div></div>`
+		`<div class="flex"><div class="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-2 my-1 max-w-[85%] chat-md">` +
+		string(renderMarkdown(answer)) + `</div></div>`
 	w.Write([]byte(frag))
 }

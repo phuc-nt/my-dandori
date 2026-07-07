@@ -13,6 +13,23 @@
     table{border-collapse:collapse}
     .fallback td,.fallback th{border:1px solid #ddd;padding:4px 8px}
     .nav-active{background:rgba(255,255,255,.14);border-left:3px solid #60a5fa}
+    /* htmx loading indicator: hidden until a request is in flight */
+    .htmx-indicator{display:none}
+    .htmx-request .htmx-indicator,.htmx-request.htmx-indicator{display:flex}
+    /* rendered markdown in chat replies (headings, tables, lists, code) */
+    .chat-md>*:first-child{margin-top:0}.chat-md>*:last-child{margin-bottom:0}
+    .chat-md h1,.chat-md h2,.chat-md h3{font-weight:600;margin:.6em 0 .3em;line-height:1.25}
+    .chat-md h1{font-size:1.25em}.chat-md h2{font-size:1.15em}.chat-md h3{font-size:1.05em}
+    .chat-md p{margin:.4em 0}
+    .chat-md ul,.chat-md ol{margin:.4em 0;padding-left:1.4em}.chat-md li{margin:.15em 0}
+    .chat-md table{margin:.5em 0;font-size:.92em}
+    .chat-md th,.chat-md td{border:1px solid #d1d5db;padding:3px 10px;text-align:left}
+    .chat-md th{background:#f3f4f6;font-weight:600}
+    .chat-md code{background:#e5e7eb;border-radius:4px;padding:1px 5px;font-size:.9em}
+    .chat-md pre{background:#1e293b;color:#e2e8f0;border-radius:8px;padding:10px 12px;overflow-x:auto;margin:.5em 0}
+    .chat-md pre code{background:none;padding:0;color:inherit}
+    .chat-md hr{border:0;border-top:1px solid #e5e7eb;margin:.6em 0}
+    .chat-md a{color:#2563eb;text-decoration:underline}
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900">

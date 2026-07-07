@@ -22,19 +22,20 @@
       {{if eq .Role "user"}}
       <div class="flex justify-end"><div class="bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2 my-1 max-w-[80%] whitespace-pre-wrap">{{.Content}}</div></div>
       {{else}}
-      <div class="flex"><div class="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-2 my-1 max-w-[80%] whitespace-pre-wrap">{{.Content}}</div></div>
+      <div class="flex"><div class="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-2 my-1 max-w-[85%] chat-md">{{ markdown .Content }}</div></div>
       {{end}}
     {{end}}
+    <div id="chat-waiting" class="htmx-indicator flex"><div class="bg-gray-100 text-gray-500 rounded-2xl rounded-bl-sm px-4 py-2 my-1 text-sm">Trợ lý đang soạn… <span class="animate-pulse">▍</span></div></div>
   </div>
   {{if .IsAdmin}}
   <form hx-post="/chat/message" hx-target="#chat-messages" hx-swap="beforeend"
+        hx-on::before-request="var m=document.getElementById('chat-messages'); m.scrollTop=m.scrollHeight"
         hx-on::after-request="this.reset(); var m=document.getElementById('chat-messages'); m.scrollTop=m.scrollHeight"
         hx-indicator="#chat-waiting"
         class="border-t p-3 flex gap-2">
     <input name="message" required maxlength="4000" autocomplete="off"
            placeholder="Hỏi trợ lý… (ví dụ: chi phí tuần này bao nhiêu?)"
            class="border rounded-full px-4 py-2 flex-1">
-    <span id="chat-waiting" class="htmx-indicator self-center text-gray-400 text-sm">đang nghĩ…</span>
     <button class="bg-blue-700 text-white rounded-full px-5 py-2">Gửi</button>
   </form>
   {{else}}
