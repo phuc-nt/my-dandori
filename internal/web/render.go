@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/phuc-nt/dandori/internal/learn"
 )
 
 //go:embed templates static
@@ -83,6 +85,28 @@ var tmplFuncs = template.FuncMap{
 			return s[:12]
 		}
 		return s
+	},
+	// FormatWilson renders a proportion with its 95% Wilson CI + sample size,
+	// e.g. "75% (CI 30–95%, n=4)" — used everywhere a done-rate/acceptance
+	// ratio is shown (insights sections + F9 leaderboard/metrics surfaces).
+	"FormatWilson": learn.FormatWilson,
+	// wilsonFromMetric reconstructs the (successes, n) pair a Metric only
+	// exposes as a pre-computed percent (learn.Metric.Value) + its RunIDs
+	// slice (one id per trial in the same denominator the percent was
+	// computed over — success()/autonomy() in metrics_calc.go both append
+	// exactly one id per counted run). n = len(runIDs); successes = the exact
+	// inverse of `value = 100*successes/n`, so this is arithmetic reconstruction
+	// of an existing computation, not a new metric — no learn struct changes.
+	// Used for Success/Autonomy only: Acceptance's EventIDs mixes edits and
+	// rejected-subset ids (not a clean trial count) so it is deliberately not
+	// wired here.
+	"wilsonFromMetric": func(value float64, runIDs []string) string {
+		n := len(runIDs)
+		if n == 0 {
+			return learn.FormatWilson(0, 0)
+		}
+		successes := int(value/100*float64(n) + 0.5)
+		return learn.FormatWilson(successes, n)
 	},
 	"statusColor": func(s string) string {
 		switch s {

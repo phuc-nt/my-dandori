@@ -64,7 +64,8 @@
       <td class="p-2 font-bold">{{$r.Grade.Letter}}{{if $r.Grade.Uncalibrated}}<span class="text-xs text-gray-400" title="fleet < 5: static bands, not percentile">*</span>{{else}}<span class="text-xs text-gray-400"> p{{score $r.Grade.Percentile}}</span>{{end}}</td>
       <td class="p-2">{{score $r.Composite}}</td>
       <td class="p-2"><a class="hover:underline" title="{{$r.Metrics.Acceptance.Formula}}" href="/provenance?agent={{$r.AgentID}}&metric=acceptance">{{score $r.Metrics.Acceptance.Value}}</a></td>
-      <td class="p-2"><a class="hover:underline" title="{{$r.Metrics.Success.Formula}}" href="/provenance?agent={{$r.AgentID}}&metric=success">{{score $r.Metrics.Success.Value}}</a></td>
+      <td class="p-2"><a class="hover:underline" title="{{$r.Metrics.Success.Formula}}" href="/provenance?agent={{$r.AgentID}}&metric=success">{{score $r.Metrics.Success.Value}}</a>
+        <div class="text-xs text-gray-400" title="Wilson CI 95% trên chính run set dùng để tính success">{{wilsonFromMetric $r.Metrics.Success.Value $r.Metrics.Success.RunIDs}}</div></td>
       <td class="p-2"><a class="hover:underline" title="{{$r.Metrics.Autonomy.Formula}}" href="/provenance?agent={{$r.AgentID}}&metric=autonomy">{{score $r.Metrics.Autonomy.Value}}</a></td>
       <td class="p-2"><a class="hover:underline" title="{{$r.Metrics.Reliability.Formula}}" href="/provenance?agent={{$r.AgentID}}&metric=reliability">{{score $r.Metrics.Reliability.Value}}</a></td>
       <td class="p-2 text-right"><a class="hover:underline" href="/runs?agent={{$r.AgentID}}">{{$r.Runs}}</a></td>

@@ -136,6 +136,8 @@ Trung thực về thước đo cũng là một phần của độ tin: (a) agent
 
 Toàn bộ pipeline trên đã được kiểm chứng end-to-end trên dữ liệu thật của chính máy phát triển: **37 phiên AI thật** từ ~20 dự án (tổng chi phí thật ~$6,400, 7 model khác nhau, cache-hit trải từ 0% đến 100%), hợp nhất cùng **24 đầu việc Jira + 2 PR GitHub**; bảng xếp hạng A–F, ROI tách lãng phí theo từng project, và trang insights đã được đối chiếu **từng ô số trên trình duyệt với truy vấn SQL gốc — khớp chính xác 100%**. Guardrail chặn thật (đã kiểm chứng sống bằng lệnh nguy hiểm), audit chuỗi hash xác minh được bằng một lệnh.
 
+**Phân tích nâng cao (insights) — cùng nguyên tắc, không phải ngoại lệ:** bản mở rộng gần nhất thêm các lát cắt sâu hơn (chi phí theo phiên bản context, "việc còn bị sửa sau khi agent báo xong", tỉ lệ chặn theo từng rule, kinh tế học của việc người phải chỉnh lái agent giữa chừng) — nhưng khi một lát cắt chưa có đủ dữ liệu thật để tin (ví dụ: đội chưa cấu hình Context Hub), trang **hiện thẳng "chưa có dữ liệu"** thay vì vẽ biểu đồ trống trông như số 0 có ý nghĩa. Đây chính là van #4 ở Phần 3 đang hoạt động, không phải lời hứa suông.
+
 ---
 
 ## Tóm lại một trang

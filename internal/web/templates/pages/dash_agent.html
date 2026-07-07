@@ -25,6 +25,9 @@
     <div class="text-sm text-gray-500 capitalize">{{$m.Name}}</div>
     <a class="text-3xl font-bold hover:underline" title="{{$m.Formula}}"
        href="/provenance?agent={{$.M.AgentID}}&metric={{$m.Name}}">{{score $m.Value}}</a>
+    {{if or (eq $m.Name "success") (eq $m.Name "autonomy")}}
+    <div class="text-xs text-gray-400" title="Wilson CI 95% trên chính run set dùng để tính {{$m.Name}}">{{wilsonFromMetric $m.Value $m.RunIDs}}</div>
+    {{end}}
     <div class="text-xs text-gray-400 truncate" title="{{$m.Formula}}">{{$m.Formula}}</div>
   </div>
   {{end}}

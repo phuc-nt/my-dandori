@@ -40,7 +40,7 @@
               {{if .Insufficient}}<span class="ml-1 text-amber-700 text-[11px]">n={{.Runs}} — chưa đủ mẫu</span>{{end}}
             </td>
             <td class="p-2 text-right">{{.Runs}}</td>
-            <td class="p-2 text-right">{{.DoneRuns}}</td>
+            <td class="p-2 text-right">{{.DoneRuns}} <span class="text-xs text-gray-400 block">{{FormatWilson .DoneRuns .Runs}}</span></td>
             <td class="p-2 text-right">{{usd .TotalCost}}</td>
             <td class="p-2 text-right">{{if .DoneRuns}}{{usd .CostPerDone}}{{else}}—{{end}}</td>
             <td class="p-2 text-right">{{pct (mul100 .CacheHitRatio)}}</td>
@@ -88,6 +88,311 @@
     </div>
   </section>
 
+  {{/* ── v11: 8 descriptive analyses (không cái nào chảy vào grade) ── */}}
+  <div class="border-t pt-6">
+    <h2 class="text-lg font-bold mb-1">Phân tích nâng cao (v11)</h2>
+    <p class="text-gray-500 text-xs mb-4">Mô tả (descriptive) — không xếp hạng người, không tính vào grade agent.</p>
+  </div>
+
+  {{/* ── Context-Version ROI ── */}}
+  <section id="context-roi">
+    <h2 class="font-semibold mb-2">Context-Version ROI</h2>
+    <p class="text-gray-500 text-xs mb-2">Bump một layer context (company/team/agent) có đổi kết quả không? Quan sát, không phải thí nghiệm có kiểm soát.</p>
+    {{if .ContextROI.Err}}
+      <div class="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">Không tải được section này: {{.ContextROI.Err}}</div>
+    {{else if .CtxEmpty}}
+      <div class="text-sm text-gray-500 bg-gray-50 border rounded p-3">Chưa có dữ liệu context injection — fleet chưa cấu hình context hub (xem <a class="text-blue-600 hover:underline" href="/contexts">Context</a>).</div>
+    {{else}}
+      {{$pairs := .ContextROI.Data}}
+      <div class="bg-white border rounded-lg overflow-x-auto mb-2">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-100 text-left"><tr>
+            <th class="p-2">Layer / Target</th><th class="p-2">Version</th>
+            <th class="p-2 text-right">Done-rate</th><th class="p-2 text-right">Chi phí/xong</th><th class="p-2 text-right">Steering/run</th>
+          </tr></thead>
+          <tbody>
+          {{range $pairs.Ready}}
+            <tr class="border-t">
+              <td class="p-2">{{.Layer}} / {{.Target}}</td>
+              <td class="p-2">v{{.FromV}} ({{.RunsFrom}}) → v{{.ToV}} ({{.RunsTo}})</td>
+              {{if .NoContrast}}
+                <td class="p-2 text-right text-gray-400" colspan="1">chưa có contrast</td>
+              {{else}}
+                <td class="p-2 text-right" title="Wilson CI 95%">
+                  {{pct (mul100 .DoneRateFrom)}} (CI {{.DoneRateFromLo}}–{{.DoneRateFromHi}}%) → {{pct (mul100 .DoneRateTo)}} (CI {{.DoneRateToLo}}–{{.DoneRateToHi}}%)
+                </td>
+              {{end}}
+              <td class="p-2 text-right">{{usd .CostPerDoneFrom}} → {{usd .CostPerDoneTo}}</td>
+              <td class="p-2 text-right">{{score .SteeringRateFrom}} → {{score .SteeringRateTo}}</td>
+            </tr>
+          {{else}}
+            <tr><td colspan="5" class="p-3 text-gray-500 text-sm">Chưa có cặp version đủ mẫu để so.</td></tr>
+          {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{if $pairs.Insufficient}}
+      <div class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+        {{len $pairs.Insufficient}} cặp version chưa đủ mẫu (n&lt;{{$.MinSample}}) — không hiển thị số, chỉ đếm:
+        {{range $pairs.Insufficient}} {{.Layer}}/{{.Target}} v{{.FromV}}→v{{.ToV}} (n={{.RunsFrom}}/{{.RunsTo}});{{end}}
+      </div>
+      {{end}}
+    {{end}}
+  </section>
+
+  {{/* ── Post-run activity (shadow work) ── */}}
+  <section id="post-run-activity">
+    <h2 class="font-semibold mb-2">Hoạt động người sau khi agent báo xong</h2>
+    <p class="text-gray-500 text-xs mb-2">Việc gì agent báo "done" mà sau đó có người sửa thêm trên cùng work item — gồm cả review, không chỉ "làm nốt".</p>
+    {{if .Activity.Err}}
+      <div class="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">Không tải được section này: {{.Activity.Err}}</div>
+    {{else}}
+      {{$act := .Activity.Data}}
+      {{if $act.Coverage.Insufficient}}
+        <div class="text-sm text-gray-500 bg-gray-50 border rounded p-3">Coverage thấp: {{$act.Coverage.RunsWithTaskKey}}/{{$act.Coverage.RunsTotal}} run xong có task_key liên kết được — chưa đủ mẫu (n&lt;{{$.MinSample}}) để đọc tỉ lệ.</div>
+      {{else}}
+      <div class="bg-white border rounded-lg overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-100 text-left"><tr>
+            <th class="p-2">Project</th><th class="p-2 text-right">Run xong</th><th class="p-2 text-right">Có hoạt động sau</th>
+          </tr></thead>
+          <tbody>
+          {{range $act.PerProject}}
+            <tr class="border-t">
+              <td class="p-2">{{.Project}}</td>
+              <td class="p-2 text-right">{{.DoneRuns}}</td>
+              <td class="p-2 text-right">{{FormatWilson .ActivityRuns .DoneRuns}}</td>
+            </tr>
+          {{else}}
+            <tr><td colspan="3" class="p-3 text-gray-500 text-sm">Chưa có dữ liệu.</td></tr>
+          {{end}}
+          </tbody>
+        </table>
+      </div>
+      <div class="text-xs text-gray-400 mt-1">Coverage: {{$act.Coverage.RunsWithTaskKey}}/{{$act.Coverage.RunsTotal}} run liên kết được task_key.</div>
+      {{end}}
+    {{end}}
+  </section>
+
+  {{/* ── Guardrail ledger (per-rule + per-class) ── */}}
+  <section id="guardrail-ledger">
+    <h2 class="font-semibold mb-2">Sổ hiệu quả guardrail</h2>
+    <p class="text-gray-500 text-xs mb-2">Rule/class nào chặn hay nhất — outcome tính trên run đã kết thúc (không tính run đang chạy).</p>
+    {{if .Ledger.Err}}
+      <div class="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">Không tải được section này: {{.Ledger.Err}}</div>
+    {{else}}
+      {{$ledger := .Ledger.Data}}
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <div class="text-xs font-semibold mb-1">Theo rule cụ thể</div>
+          <div class="bg-white border rounded-lg overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-100 text-left"><tr><th class="p-2">Rule</th><th class="p-2 text-right">Blocks</th><th class="p-2 text-right">→Done/Fail-Kill</th></tr></thead>
+              <tbody>
+              {{range $ledger.PerRule}}
+                <tr class="border-t">
+                  <td class="p-2 text-xs">#{{.RuleID}} {{.Description}}{{if .Insufficient}}<span class="ml-1 text-amber-700">n&lt;{{$.MinSample}}</span>{{end}}</td>
+                  <td class="p-2 text-right">{{.Blocks}}</td>
+                  <td class="p-2 text-right">{{.RunsDone}}/{{.RunsKilledOrFailed}} <span class="text-gray-400">({{.RunsUnfinished}} đang chạy)</span></td>
+                </tr>
+              {{else}}
+                <tr><td colspan="3" class="p-3 text-gray-500 text-sm">Chưa có block gắn rule cụ thể.</td></tr>
+              {{end}}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <div class="text-xs font-semibold mb-1">Theo check class (không rule id)</div>
+          <div class="bg-white border rounded-lg overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-100 text-left"><tr><th class="p-2">Class</th><th class="p-2 text-right">Blocks</th><th class="p-2 text-right">→Done/Fail-Kill</th></tr></thead>
+              <tbody>
+              {{range $ledger.PerClass}}
+                <tr class="border-t">
+                  <td class="p-2">{{.Class}}{{if .Insufficient}}<span class="ml-1 text-amber-700 text-xs">n&lt;{{$.MinSample}}</span>{{end}}</td>
+                  <td class="p-2 text-right">{{.Blocks}}</td>
+                  <td class="p-2 text-right">{{.RunsDone}}/{{.RunsKilledOrFailed}} <span class="text-gray-400">({{.RunsUnfinished}} đang chạy)</span></td>
+                </tr>
+              {{else}}
+                <tr><td colspan="3" class="p-3 text-gray-500 text-sm">Chưa có block class-level.</td></tr>
+              {{end}}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    {{end}}
+  </section>
+
+  {{/* ── Time-horizon ── */}}
+  <section id="time-horizon">
+    <h2 class="font-semibold mb-2">Đường cong theo thời lượng (time-horizon)</h2>
+    <p class="text-gray-500 text-xs mb-2">Tỉ lệ xong có giữ được khi task chạy lâu hơn không (kiểu METR).</p>
+    {{if .Horizon.Err}}
+      <div class="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">Không tải được section này: {{.Horizon.Err}}</div>
+    {{else}}
+      <div class="bg-white border rounded-lg overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-100 text-left"><tr><th class="p-2">Bucket</th><th class="p-2 text-right">Runs</th><th class="p-2 text-right">Done-rate</th></tr></thead>
+          <tbody>
+          {{range .Horizon.Data}}
+            <tr class="border-t">
+              <td class="p-2">{{.Label}}</td>
+              <td class="p-2 text-right">{{.Runs}}</td>
+              <td class="p-2 text-right">
+                {{if eq .Runs 0}}<span class="text-gray-400">chưa có run</span>
+                {{else if .NoContrast}}<span class="text-gray-500">{{FormatWilson .Done .Runs}} — chưa có run fail để so</span>
+                {{else}}{{FormatWilson .Done .Runs}}
+                {{end}}
+              </td>
+            </tr>
+          {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{if .HorizonByModel.Err}}
+        <div class="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2 mt-2">Không tải được phân rã theo model: {{.HorizonByModel.Err}}</div>
+      {{else if .HorizonByModel.Data}}
+      <div class="text-xs text-gray-500 mt-2 mb-1">Theo model (chỉ hiện ô ≥5 run):</div>
+      <div class="bg-white border rounded-lg overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-100 text-left"><tr><th class="p-2">Bucket</th><th class="p-2">Model</th><th class="p-2 text-right">Done-rate</th></tr></thead>
+          <tbody>
+          {{range .HorizonByModel.Data}}
+            <tr class="border-t"><td class="p-2">{{.Label}}</td><td class="p-2 font-mono text-xs">{{.Model}}</td><td class="p-2 text-right">{{FormatWilson .Done .Runs}}</td></tr>
+          {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{end}}
+    {{end}}
+  </section>
+
+  {{/* ── Spend Pareto ── */}}
+  <section id="spend-pareto">
+    <h2 class="font-semibold mb-2">Pareto chi phí (80/20)</h2>
+    <p class="text-gray-500 text-xs mb-2">Run nào chiếm phần lớn chi phí. Run đang chạy bị loại khỏi mẫu số (chi phí chưa chốt).</p>
+    {{if .Pareto.Err}}
+      <div class="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">Không tải được section này: {{.Pareto.Err}}</div>
+    {{else}}
+      {{$p := .Pareto.Data}}
+      {{if not $p.Tiers}}
+        <div class="text-sm text-gray-500 bg-gray-50 border rounded p-3">Chưa có run kết thúc với chi phí &gt; 0 trong khoảng này.</div>
+      {{else}}
+      <div class="grid md:grid-cols-3 gap-3 mb-2">
+        {{range $p.Tiers}}
+        <div class="bg-white border rounded-lg p-3">
+          <div class="text-sm text-gray-500">Tier {{.Name}}</div>
+          <div class="text-xl font-bold">{{pct .CostPct}} chi phí</div>
+          <div class="text-xs text-gray-400">{{.RunCount}} run ({{pct .RunPct}})</div>
+        </div>
+        {{end}}
+      </div>
+      <div class="bg-white border rounded-lg overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-100 text-left"><tr><th class="p-2">Run</th><th class="p-2">Agent</th><th class="p-2">Project</th><th class="p-2 text-right">Cost</th><th class="p-2 text-right">Cum%</th></tr></thead>
+          <tbody>
+          {{range $p.Top}}
+            <tr class="border-t">
+              <td class="p-2"><a class="text-blue-600 hover:underline font-mono text-xs" href="/runs/{{.RunID}}">{{short .RunID}}</a></td>
+              <td class="p-2 text-xs">{{.Agent}}</td><td class="p-2 text-xs">{{.Project}}</td>
+              <td class="p-2 text-right">{{usd .Cost}}</td><td class="p-2 text-right">{{pct .CumCostPct}}</td>
+            </tr>
+          {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{end}}
+      {{if $p.ExcludedRunning}}
+      <div class="text-xs text-gray-400 mt-1">{{$p.ExcludedRunning}} run đang chạy ({{usd $p.ExcludedCost}}) bị loại khỏi phân tích — chi phí chưa chốt.</div>
+      {{end}}
+    {{end}}
+  </section>
+
+  {{/* ── Steering economics ── */}}
+  <section id="steering-econ">
+    <h2 class="font-semibold mb-2">Kinh tế học steering</h2>
+    <p class="text-gray-500 text-xs mb-2">
+      Steering giữa chừng có liên hệ outcome không — mức fleet, KHÔNG xếp hạng người.
+      Taxonomy là <strong>heuristic từ khóa</strong>, không phải NLP/LLM. Vị trí message theo <strong>thứ tự tin nhắn</strong>, không phải đồng hồ.
+    </p>
+    {{if .Steering.Err}}
+      <div class="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">Không tải được section này: {{.Steering.Err}}</div>
+    {{else}}
+      {{$sg := .Steering.Data}}
+      <div class="grid md:grid-cols-2 gap-4 mb-3">
+        <div class="bg-white border rounded-lg p-3">
+          <div class="text-xs text-gray-500 mb-1">Có steering (&gt;0)</div>
+          {{if eq $sg.WithSteer.Runs 0}}
+            <div class="text-sm text-gray-400">chưa có contrast</div>
+          {{else}}
+            <div class="font-bold">{{FormatWilson $sg.WithSteer.Done $sg.WithSteer.Runs}}</div>
+            <div class="text-xs text-gray-400">mật độ tb {{score $sg.WithSteer.AvgDensity}}/phút</div>
+          {{end}}
+        </div>
+        <div class="bg-white border rounded-lg p-3">
+          <div class="text-xs text-gray-500 mb-1">Không steering (=0)</div>
+          {{if eq $sg.WithoutSteer.Runs 0}}
+            <div class="text-sm text-gray-400">chưa có contrast</div>
+          {{else}}
+            <div class="font-bold">{{FormatWilson $sg.WithoutSteer.Done $sg.WithoutSteer.Runs}}</div>
+          {{end}}
+        </div>
+      </div>
+      {{if eq $sg.KeptTotal 0}}
+        <div class="text-sm text-gray-500 bg-gray-50 border rounded p-3">Chưa có steering text để phân loại (local mode only).</div>
+      {{else}}
+      <div class="bg-white border rounded-lg overflow-x-auto mb-1">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-100 text-left"><tr><th class="p-2">Taxonomy (heuristic)</th><th class="p-2 text-right">Count</th></tr></thead>
+          <tbody>
+          {{range $sg.Taxonomy}}
+            <tr class="border-t"><td class="p-2">{{.Name}} <span class="text-gray-400 text-xs">(heuristic)</span></td><td class="p-2 text-right">{{.Count}}</td></tr>
+          {{end}}
+          </tbody>
+        </table>
+      </div>
+      <div class="text-xs text-gray-500">
+        Giữ lại {{$sg.KeptTotal}}/{{$sg.CountTotal}} tin nhắn (cap dung lượng có thể cắt bớt run nặng) ·
+        vị trí theo thứ tự tin nhắn: sớm {{$sg.SeqIndex.Early}} / giữa {{$sg.SeqIndex.Mid}} / muộn {{$sg.SeqIndex.Late}}
+      </div>
+      {{end}}
+    {{end}}
+  </section>
+
+  {{/* ── Approval funnel ── */}}
+  <section id="approval-funnel">
+    <h2 class="font-semibold mb-2">Phễu phê duyệt</h2>
+    <p class="text-gray-500 text-xs mb-2">Bao nhiêu request tới mỗi bước, thời gian người quyết định — không tính expiry sweep là quyết định người.</p>
+    {{if .Funnel.Err}}
+      <div class="text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">Không tải được section này: {{.Funnel.Err}}</div>
+    {{else}}
+      {{$f := .Funnel.Data}}
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
+        <div class="bg-white border rounded-lg p-3"><div class="text-xs text-gray-500">Requested</div><div class="text-xl font-bold">{{$f.Stages.Requested}}</div></div>
+        <div class="bg-white border rounded-lg p-3"><div class="text-xs text-gray-500">Approved</div><div class="text-xl font-bold text-green-700">{{$f.Stages.Approved}}</div></div>
+        <div class="bg-white border rounded-lg p-3"><div class="text-xs text-gray-500">Rejected</div><div class="text-xl font-bold text-red-600">{{$f.Stages.Rejected}}</div></div>
+        <div class="bg-white border rounded-lg p-3"><div class="text-xs text-gray-500">Expired</div><div class="text-xl font-bold text-amber-700">{{$f.Stages.Expired}}</div><div class="text-[10px] text-gray-400">TTL sweep, không phải người quyết</div></div>
+        <div class="bg-white border rounded-lg p-3"><div class="text-xs text-gray-500">Pending</div><div class="text-xl font-bold">{{$f.Stages.Pending}}</div></div>
+      </div>
+      {{if not $f.HasHumanDecisions}}
+        <div class="text-sm text-gray-500 bg-gray-50 border rounded p-3">Chưa có quyết định người trong khoảng này — mọi bản ghi "decided" đều là expiry sweep (janitor clock), không phải người bấm duyệt/từ chối.</div>
+      {{else}}
+      <div class="bg-white border rounded-lg overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-100 text-left"><tr><th class="p-2">Action</th><th class="p-2 text-right">N</th><th class="p-2 text-right">Median (phút)</th><th class="p-2 text-right">P90 (phút)</th></tr></thead>
+          <tbody>
+          {{range $f.ByAction}}
+            <tr class="border-t"><td class="p-2 font-mono text-xs">{{.Action}}</td><td class="p-2 text-right">{{.Count}}</td><td class="p-2 text-right">{{score .MedianMin}}</td><td class="p-2 text-right">{{score .P90Min}}</td></tr>
+          {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{end}}
+    {{end}}
+  </section>
+
 </div>
 {{end}}
 
@@ -128,7 +433,8 @@
           {{if .Insufficient}}<span class="ml-1 text-amber-700 text-[11px]">n={{.Runs}}</span>{{end}}
         </td>
         <td class="p-2 text-right">{{.Runs}}</td>
-        <td class="p-2 text-right text-xs">{{.Done}} / {{.Failed}} / {{.Killed}} / {{.Running}}</td>
+        <td class="p-2 text-right text-xs">{{.Done}} / {{.Failed}} / {{.Killed}} / {{.Running}}
+          <span class="text-gray-400 block">{{FormatWilson .Done .Runs}}</span></td>
         <td class="p-2 text-right">{{usd .TotalCost}}</td>
         <td class="p-2 text-right">{{.FormatCostPerDone}}</td>
       </tr>
