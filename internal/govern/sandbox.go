@@ -58,6 +58,11 @@ func pathTokens(command string) []string {
 // and the shared allowlist (G2). Only Write/Edit/NotebookEdit file paths are
 // enforced strictly; Bash path tokens are best-effort.
 func (e *Engine) checkSandbox(tc ToolCall) (Decision, bool) {
+	// G2 opt-out: a nil flag means enabled (safe default); only an explicit
+	// false disables the write-scope guardrail (trusted single-dev machine).
+	if e.Cfg != nil && e.Cfg.SandboxEnabled != nil && !*e.Cfg.SandboxEnabled {
+		return Decision{}, false
+	}
 	if tc.CWD == "" {
 		return Decision{}, false
 	}

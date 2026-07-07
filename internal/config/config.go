@@ -43,7 +43,12 @@ type Config struct {
 	Approvers            []string `yaml:"approvers"` // Slack user ids/names allowed to decide; empty = anyone
 	WatchIntervalSeconds int      `yaml:"watch_interval_seconds"`
 	ProjectsDir          string   `yaml:"projects_dir"`
-	LearnWindowDays      int      `yaml:"learn_window_days"`
+	// SandboxEnabled gates the G2 write-scope guardrail (Write/Edit outside the
+	// run's cwd). Defaults true. Set false to let runs edit sibling repos on a
+	// trusted single-dev machine — loses the isolation guarantee, so keep it on
+	// for multi-user / shared setups.
+	SandboxEnabled  *bool `yaml:"sandbox_enabled"`
+	LearnWindowDays int   `yaml:"learn_window_days"`
 	// v8 notifications. PublicBaseURL is the console origin used to build deep
 	// links in Slack alerts. NotifyFlagStaleDays is the age past which an open
 	// flag is announced (default 3).
