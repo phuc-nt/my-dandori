@@ -4,6 +4,10 @@
 
 Vision đầy đủ: [docs/01-product-vision.md](docs/01-product-vision.md) · Tính năng: [docs/03-features.md](docs/03-features.md) · Ghi chú hiện thực: [docs/04-implementation-notes.md](docs/04-implementation-notes.md)
 
+> **📘 Hướng dẫn sử dụng tiếng Việt: [docs/guide/](docs/guide/)** — bắt đầu, guide theo vai (engineer/manager/admin), luồng tri thức, và bảng tra cứu đầy đủ.
+
+Ngoài ba trụ nền, Dandori nay còn: **đăng nhập + phân quyền** (admin/viewer, principal thật vào audit — v10) · **insights hiệu suất chi phí** theo model/project với Wilson CI (v11) · **luồng tri thức** cá nhân→tổ chức→cá nhân: mining practice, AI-draft, phân phối skill/agent-kit hash-pinned (v12–v13).
+
 ## Cài đặt
 
 ```bash
@@ -59,6 +63,10 @@ Claude Code ──PreToolUse──▶ dandori hook pre-tool
 | `dandori team add\|assign\|list` | Quản lý đội: gộp operator + agent để so hiệu quả |
 | `dandori observe run` | Master Observer: sinh insight + áp dụng action đã duyệt |
 | `dandori flywheel detect\|promote\|publish\|adoption` | Phát hiện & chia sẻ cách làm hay |
+| `dandori operator add\|list\|set-password\|disable` | Tài khoản đăng nhập console (v10) |
+| `dandori token create\|list\|revoke` | Ingest token per-operator cho central-mode (v10) |
+| `dandori knowledge detect\|import` | Detector tri thức · import memory/journal (v12–13) |
+| `dandori skill list\|pull` · `kit list\|nominate\|pull` | Kéo skill / agent-kit hash-pinned về `.claude/` (v13) |
 
 ## Central mode (nhiều máy → 1 server)
 
