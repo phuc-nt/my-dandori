@@ -111,6 +111,11 @@
     <div class="text-2xl font-bold">{{.Run.OutputTokens}}</div></div>
   <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Task</div>
     <div class="text-2xl font-bold">{{if .Run.TaskKey}}{{.Run.TaskKey}}{{else}}—{{end}}</div></div>
+  {{if .RiskScore}}
+  <div class="bg-white border rounded-lg p-4"><div class="text-sm text-gray-500">Risk score (G5)</div>
+    <div class="text-2xl font-bold {{if ge .RiskScore .RiskThreshold}}text-red-600{{end}}">{{.RiskScore}}</div>
+    <div class="text-xs text-gray-400">ngưỡng {{.RiskThreshold}} · cửa sổ trượt</div></div>
+  {{end}}
 </div>
 
 <div class="mb-6">

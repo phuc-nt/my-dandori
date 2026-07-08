@@ -2,6 +2,7 @@ package govern
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -106,6 +107,45 @@ func TestComplianceExportBundle(t *testing.T) {
 	}
 	if err := b.WriteCSV(&csvBuf); err != nil || len(csvBuf) == 0 {
 		t.Errorf("csv: %v", err)
+	}
+}
+
+// TestFindOrCreateApprovalConcurrentDedup proves the partial unique index
+// (migration 019) closes the SELECT-then-INSERT TOCTOU: many goroutines
+// racing findOrCreateApproval for the same (run_id, action) must settle on
+// exactly one pending approval row, not one per racing caller.
+func TestFindOrCreateApprovalConcurrentDedup(t *testing.T) {
+	e := testEngine(t)
+	seedRun(t, e, "race1", 0)
+
+	const n = 20
+	ids := make([]int64, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			ids[i], errs[i] = e.findOrCreateApproval("race1", "deploy prod", "concurrent gate")
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("goroutine %d: %v", i, err)
+		}
+	}
+	first := ids[0]
+	for i, id := range ids {
+		if id != first {
+			t.Errorf("goroutine %d got approval id %d, want %d (all callers must share one row)", i, id, first)
+		}
+	}
+	var n2 int
+	e.St.DB.QueryRow(`SELECT count(*) FROM approvals WHERE run_id='race1' AND action='deploy prod' AND status='pending'`).Scan(&n2)
+	if n2 != 1 {
+		t.Errorf("pending approvals for (race1, deploy prod): %d, want 1", n2)
 	}
 }
 

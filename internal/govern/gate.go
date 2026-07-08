@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/phuc-nt/dandori/internal/store"
@@ -50,6 +51,7 @@ func (e *Engine) checkGate(ctx context.Context, tc ToolCall, rules []Rule) (Deci
 	e.expireStale()
 	id, err := e.findOrCreateApproval(tc.RunID, action, reason)
 	if err != nil {
+		// gate, FailClosed (contract.go): cannot create/track the approval → deny
 		return Decision{Deny, "[dandori G4] internal error creating approval: " + err.Error()}, true
 	}
 
@@ -87,6 +89,12 @@ func (e *Engine) CreateApproval(runID, action, reason string) (int64, error) {
 
 // findOrCreateApproval reuses an existing pending approval for the same
 // run+action (agent retries after a timeout deny must not spam the queue).
+// The SELECT-then-INSERT here is naturally racy under concurrent hook
+// invocations for the same (run_id, action); the partial unique index
+// (migration 019, WHERE status='pending') is what actually closes the
+// TOCTOU — if two callers both miss the SELECT and both INSERT, the loser's
+// insert fails the unique constraint and re-selects the winner's row instead
+// of erroring, so exactly one pending approval always results.
 func (e *Engine) findOrCreateApproval(runID, action, reason string) (int64, error) {
 	var id int64
 	err := e.St.DB.QueryRow(`SELECT id FROM approvals
@@ -96,10 +104,36 @@ func (e *Engine) findOrCreateApproval(runID, action, reason string) (int64, erro
 	case err == nil:
 		return id, nil
 	case err == sql.ErrNoRows:
-		return e.CreateApproval(runID, action, reason)
+		id, err := e.CreateApproval(runID, action, reason)
+		if err == nil {
+			return id, nil
+		}
+		if !isUniqueConstraintErr(err) {
+			return 0, err // transient DB error must not spawn duplicates
+		}
+		// Lost the race: another caller inserted the pending row first — pick
+		// it up instead of erroring (or worse, retrying and looping forever).
+		var raceID int64
+		selErr := e.St.DB.QueryRow(`SELECT id FROM approvals
+			WHERE run_id = ? AND action = ? AND status = 'pending'
+			ORDER BY id DESC LIMIT 1`, runID, action).Scan(&raceID)
+		if selErr != nil {
+			return 0, selErr
+		}
+		return raceID, nil
 	default:
 		return 0, err // transient DB error must not spawn duplicates
 	}
+}
+
+// isUniqueConstraintErr reports whether err is a SQLite unique-constraint
+// violation (modernc.org/sqlite error text — no CGO driver-specific error
+// code available, so this matches on the standard SQLite message).
+func isUniqueConstraintErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
 // expireStale flips pending approvals older than the TTL to expired.

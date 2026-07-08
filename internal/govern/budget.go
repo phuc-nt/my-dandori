@@ -2,6 +2,7 @@ package govern
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/phuc-nt/dandori/internal/store"
@@ -42,8 +43,8 @@ func (e *Engine) budgetLimit(scopeType, scopeID string) float64 {
 }
 
 // checkBudget enforces the circuit breaker (G3): each applicable scope is
-// checked; ≥100% denies, warn thresholds emit one budget_warn event per
-// (scope, pct, month).
+// checked; ≥100% triggers the configured mode (hard-stop or downgrade-gate),
+// warn thresholds emit one budget_warn event per (scope, pct, month).
 func (e *Engine) checkBudget(tc ToolCall) (Decision, bool) {
 	scopes := [][2]string{{"global", ""}, {"agent", tc.AgentID}, {"project", tc.Project}}
 	for _, s := range scopes {
@@ -53,16 +54,98 @@ func (e *Engine) checkBudget(tc ToolCall) (Decision, bool) {
 		}
 		spend, err := e.SpendMonth(s[0], s[1])
 		if err != nil {
+			// budget, FailClosed (contract.go): cannot prove spend is within limit → deny
 			return Decision{Deny, "[dandori G3] internal error checking budget: " + err.Error()}, true
 		}
 		pct := spend / limit * 100
 		if pct >= 100 {
-			return Decision{Deny, fmt.Sprintf("[dandori G3] budget exceeded for %s %s: $%.2f / $%.2f this month — hard stop",
-				s[0], s[1], spend, limit)}, true
+			return e.overBudgetDecision(tc, s[0], s[1], spend, limit)
 		}
 		e.emitBudgetWarn(s[0], s[1], pct, spend, limit)
 	}
 	return Decision{}, false
+}
+
+// overBudgetDecision applies the configured Budget.Mode once a scope has
+// crossed 100%. "hard" preserves the pre-v14 behavior: deny every tool call
+// regardless of model. The default "downgrade" mode only denies when the
+// run's own model is expensive — a cheap-model run is allowed to continue so
+// an agent isn't fully blocked just because a different scope overspent.
+func (e *Engine) overBudgetDecision(tc ToolCall, scopeType, scopeID string, spend, limit float64) (Decision, bool) {
+	if e.Cfg.Budget.Mode == "hard" {
+		return Decision{Deny, fmt.Sprintf("[dandori G3] budget exceeded for %s %s: $%.2f / $%.2f this month — hard stop",
+			scopeType, scopeID, spend, limit)}, true
+	}
+	model, err := e.runModel(tc.RunID)
+	if err != nil {
+		// budget, FailClosed (contract.go): cannot prove the run's model is
+		// cheap enough to allow through the downgrade-gate → deny.
+		return Decision{Deny, "[dandori G3] internal error checking run model: " + err.Error()}, true
+	}
+	if model == "" {
+		return e.nullAllowGate(tc, scopeType, scopeID, spend, limit)
+	}
+	if e.matchExpensive(model) {
+		return Decision{Deny, fmt.Sprintf(
+			"[dandori G3] budget exceeded for %s %s ($%.2f / $%.2f this month) and this run's model (%s) is expensive — đổi sang model rẻ hơn qua /model rồi thử lại",
+			scopeType, scopeID, spend, limit, model)}, true
+	}
+	e.emitBudgetDowngradeAllow(tc.RunID, scopeType, scopeID, model, spend, limit)
+	return Decision{}, false
+}
+
+// runModel point-queries the run's currently-known model. Empty string means
+// unreconciled/unknown (NULL in the DB) — see ingest.go's ReconcileUsage,
+// which only writes runs.model once a transcript is parsed (Claude runtime)
+// or at FinalizeRun (other runtimes); a run can spend an entire session with
+// model == "" if it never reconciles mid-run.
+func (e *Engine) runModel(runID string) (string, error) {
+	var model string
+	err := e.St.DB.QueryRow(`SELECT COALESCE(model, '') FROM runs WHERE id = ?`, runID).Scan(&model)
+	if err != nil {
+		return "", err
+	}
+	return model, nil
+}
+
+// matchExpensive reports whether model matches the configured expensive
+// allowlist (case-insensitive substring). An empty list disables the hard
+// limit entirely — see Budget.ExpensiveModels doc comment.
+func (e *Engine) matchExpensive(model string) bool {
+	list := e.Cfg.Budget.ExpensiveModelList()
+	if len(list) == 0 {
+		return false
+	}
+	lower := strings.ToLower(model)
+	for _, needle := range list {
+		if needle == "" {
+			continue
+		}
+		if strings.Contains(lower, strings.ToLower(needle)) {
+			return true
+		}
+	}
+	return false
+}
+
+// emitBudgetDowngradeAllow records the honest-data event for "over budget,
+// but this run's model was cheap enough (or NULL within the allow cap) to
+// keep going" — at most once per run per month. Dedup is done via an events
+// query (has this run already emitted this kind this month?) rather than a
+// settings key, so the settings table doesn't grow one row per run
+// (unbounded cardinality) — see Budget downgrade-gate requirements.
+func (e *Engine) emitBudgetDowngradeAllow(runID, scopeType, scopeID, model string, spend, limit float64) {
+	monthStart := time.Now().UTC().Format("2006-01") + "-01T00:00:00Z"
+	var exists int
+	_ = e.St.DB.QueryRow(`SELECT COUNT(*) FROM events
+		WHERE run_id = ? AND kind = 'budget_downgrade_allow' AND ts >= ?`, runID, monthStart).Scan(&exists)
+	if exists > 0 {
+		return
+	}
+	detail := fmt.Sprintf("budget %s %s over limit ($%.2f/$%.2f) but model %q allowed to continue (downgrade-gate)",
+		scopeType, scopeID, spend, limit, model)
+	_, _ = e.St.DB.Exec(`INSERT INTO events(run_id, ts, kind, tool_name, ok, payload)
+		VALUES(?, ?, 'budget_downgrade_allow', '', 1, ?)`, runID, store.Now(), detail)
 }
 
 // emitBudgetWarn records threshold crossings once per scope+pct+month.

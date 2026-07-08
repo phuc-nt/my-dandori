@@ -15,6 +15,161 @@ import (
 type Budget struct {
 	GlobalMonthlyUSD float64 `yaml:"global_monthly_usd"`
 	WarnPcts         []int   `yaml:"warn_pcts"`
+	// Mode picks the G3 over-budget behavior. "" or "downgrade" (default): only
+	// deny tool calls on a run whose model is in ExpensiveModels — cheap-model
+	// runs continue with an honest-data event. "hard": deny everything over
+	// budget regardless of model (pre-v14 behavior), for operators who want the
+	// stricter circuit breaker back.
+	Mode string `yaml:"mode"`
+	// ExpensiveModels is a case-insensitive substring allowlist matched against
+	// runs.model to decide which models trigger the downgrade-gate deny. nil
+	// (unset in YAML) uses the package default below. An explicit empty list
+	// `[]` disables the hard limit entirely — only the warn thresholds still
+	// fire, matching the pre-existing Omnigent semantic for "no hard cap".
+	ExpensiveModels []string `yaml:"expensive_models"`
+	// NullAllowCap bounds how many times per agent per month a NULL-model run
+	// (model not yet reconciled from the transcript) may be allowed through
+	// while over budget, before the null-model gate starts denying. <=0 uses
+	// the default of 20. See budget.go's nullAllowGate.
+	NullAllowCap int `yaml:"null_allow_cap"`
+}
+
+// defaultExpensiveModels lists the models the downgrade-gate treats as
+// "expensive" when Budget.ExpensiveModels is unset (nil) in config. Derived
+// from internal/config/pricing.go's defaultPricing: claude-opus-4-8 and
+// claude-fable-5 price output tokens at 25/M, versus 15/M for sonnet and 5/M
+// for haiku — those two are the expensive tier. Hardcoded rather than
+// computed from the pricing table at runtime (KISS: deriving live from
+// pricing table adds indirection an operator can't easily reason about; a
+// static list an operator can override in config.yaml is simpler to audit).
+// Verified against real fleet data (`SELECT model, COUNT(*) FROM runs`):
+// claude-opus-4-8 dominates the expensive tail; there is no gpt-5 in this
+// pricing table or fleet, so gpt-5 must never appear in this default.
+var defaultExpensiveModels = []string{"opus", "fable"}
+
+const defaultNullAllowCap = 20
+
+// ExpensiveModelList resolves the configured allowlist: nil (unset) falls
+// back to defaultExpensiveModels; an explicit empty slice `[]` is returned
+// as-is (disables the hard limit — see ExpensiveModels doc comment).
+func (b Budget) ExpensiveModelList() []string {
+	if b.ExpensiveModels == nil {
+		return defaultExpensiveModels
+	}
+	return b.ExpensiveModels
+}
+
+// NullAllowCapValue resolves the configured per-agent-per-month cap on
+// NULL-model downgrade-allows; <=0 (unset) falls back to defaultNullAllowCap.
+func (b Budget) NullAllowCapValue() int {
+	if b.NullAllowCap <= 0 {
+		return defaultNullAllowCap
+	}
+	return b.NullAllowCap
+}
+
+// RiskScore configures the G5 risk-score guardrail: a run accrues points from
+// tool_use volume + real rule-hit denials over a sliding window, and once the
+// score crosses Threshold on a guarded tool, mode decides what happens.
+// Default is "log" (observe only, never block) precisely because a wrong
+// default threshold would brick normal runs the way the pre-hardening design
+// would have (see internal/govern/risk.go doc comment) — gating is opt-in
+// after an operator calibrates Threshold against real fleet data.
+type RiskScore struct {
+	// Mode: "" or "log" (default) only emits a risk_would_gate event when over
+	// threshold — the tool call is NOT blocked. "gate" escalates to a human
+	// approval the same way checkGate does.
+	Mode string `yaml:"mode"`
+	// Threshold ≤0 uses the default (100) — only meaningful in gate mode. An
+	// operator must calibrate this from real data before switching to gate;
+	// see the CALIBRATION query in docs/04-implementation-notes.md.
+	Threshold int `yaml:"threshold"`
+	// WindowN ≤0 uses the default (40) — the score only ever looks at the
+	// last WindowN events of a run, so a long normal run cannot climb into
+	// the threshold purely from length (the sliding-window anti-ratchet fix).
+	WindowN int `yaml:"window_n"`
+	// ToolPoints maps a tool name to its per-call point cost. nil (unset)
+	// uses the package default (Bash 2, Write/Edit/NotebookEdit 1, WebFetch 5).
+	ToolPoints map[string]int `yaml:"tool_points"`
+	// DenialPoints ≤0 uses the default (25) — added once per REAL rule-hit
+	// denial (guardrail_block/sandbox_block/secrets_block) found in the
+	// window's time span. engine_error, budget_block, risk_gate and every
+	// Allow are excluded by design (self-exclusion — see risk.go).
+	DenialPoints int `yaml:"denial_points"`
+	// GuardedTools is the set of tool names G5 can escalate/log for. nil
+	// (unset) uses the default (["Bash"]) — a read-only tool is never worth
+	// gating even at a high score.
+	GuardedTools []string `yaml:"guarded_tools"`
+}
+
+// defaultToolPoints is used when RiskScore.ToolPoints is unset (nil) in
+// config. WebFetch is weighted highest (external network egress); Bash next
+// (arbitrary shell); file-mutating tools lowest (already sandboxed by G2).
+var defaultToolPoints = map[string]int{
+	"Bash":         2,
+	"Write":        1,
+	"Edit":         1,
+	"NotebookEdit": 1,
+	"WebFetch":     5,
+}
+
+const (
+	defaultRiskThreshold    = 100
+	defaultRiskWindowN      = 40
+	defaultRiskDenialPoints = 25
+)
+
+var defaultGuardedTools = []string{"Bash"}
+
+// ThresholdValue resolves the configured gate threshold; ≤0 (unset) falls
+// back to defaultRiskThreshold.
+func (r RiskScore) ThresholdValue() int {
+	if r.Threshold <= 0 {
+		return defaultRiskThreshold
+	}
+	return r.Threshold
+}
+
+// WindowNValue resolves the sliding-window size; ≤0 (unset) falls back to
+// defaultRiskWindowN.
+func (r RiskScore) WindowNValue() int {
+	if r.WindowN <= 0 {
+		return defaultRiskWindowN
+	}
+	return r.WindowN
+}
+
+// ToolPointsValue resolves the per-tool point map; nil (unset) falls back to
+// defaultToolPoints.
+func (r RiskScore) ToolPointsValue() map[string]int {
+	if r.ToolPoints == nil {
+		return defaultToolPoints
+	}
+	return r.ToolPoints
+}
+
+// DenialPointsValue resolves the per-denial point cost; ≤0 (unset) falls back
+// to defaultRiskDenialPoints.
+func (r RiskScore) DenialPointsValue() int {
+	if r.DenialPoints <= 0 {
+		return defaultRiskDenialPoints
+	}
+	return r.DenialPoints
+}
+
+// GuardedToolsValue resolves the escalatable tool set; nil (unset) falls back
+// to defaultGuardedTools.
+func (r RiskScore) GuardedToolsValue() []string {
+	if r.GuardedTools == nil {
+		return defaultGuardedTools
+	}
+	return r.GuardedTools
+}
+
+// GateMode reports whether risk-score gating (as opposed to log-only
+// observation) is enabled.
+func (r RiskScore) GateMode() bool {
+	return r.Mode == "gate"
 }
 
 type Integrations struct {
@@ -32,17 +187,18 @@ type Integrations struct {
 }
 
 type Config struct {
-	DBPath               string   `yaml:"db_path"`
-	Listen               string   `yaml:"listen"`
-	UserName             string   `yaml:"user_name"`
-	DryRun               bool     `yaml:"dry_run"`
-	AgentWriteDisabled   bool     `yaml:"-"`
-	Budget               Budget   `yaml:"budget"`
-	GateWaitSeconds      int      `yaml:"gate_wait_seconds"`
-	ApprovalTTLMinutes   int      `yaml:"approval_ttl_minutes"`
-	Approvers            []string `yaml:"approvers"` // Slack user ids/names allowed to decide; empty = anyone
-	WatchIntervalSeconds int      `yaml:"watch_interval_seconds"`
-	ProjectsDir          string   `yaml:"projects_dir"`
+	DBPath               string    `yaml:"db_path"`
+	Listen               string    `yaml:"listen"`
+	UserName             string    `yaml:"user_name"`
+	DryRun               bool      `yaml:"dry_run"`
+	AgentWriteDisabled   bool      `yaml:"-"`
+	Budget               Budget    `yaml:"budget"`
+	RiskScore            RiskScore `yaml:"risk_score"`
+	GateWaitSeconds      int       `yaml:"gate_wait_seconds"`
+	ApprovalTTLMinutes   int       `yaml:"approval_ttl_minutes"`
+	Approvers            []string  `yaml:"approvers"` // Slack user ids/names allowed to decide; empty = anyone
+	WatchIntervalSeconds int       `yaml:"watch_interval_seconds"`
+	ProjectsDir          string    `yaml:"projects_dir"`
 	// SandboxEnabled gates the G2 write-scope guardrail (Write/Edit outside the
 	// run's cwd). Defaults true. Set false to let runs edit sibling repos on a
 	// trusted single-dev machine — loses the isolation guarantee, so keep it on
@@ -52,8 +208,14 @@ type Config struct {
 	// TABLE, force-push). Defaults true — this is the last-line safety net.
 	// Set false ONLY on a trusted single-dev machine; dangerous commands then
 	// run unblocked.
-	BlockEnabled    *bool `yaml:"block_enabled"`
-	LearnWindowDays int   `yaml:"learn_window_days"`
+	BlockEnabled *bool `yaml:"block_enabled"`
+	// SecretsGuardEnabled gates the G1.5 secret/PII guardrail (provider API
+	// keys, AWS keys, private keys → deny; card/email PII → gate on human
+	// approval). Defaults true — this is the leak-prevention last line before
+	// a secret reaches events.payload, audit or Slack. Set false ONLY on a
+	// trusted single-dev machine where the risk is accepted.
+	SecretsGuardEnabled *bool `yaml:"secrets_guard_enabled"`
+	LearnWindowDays     int   `yaml:"learn_window_days"`
 	// v8 notifications. PublicBaseURL is the console origin used to build deep
 	// links in Slack alerts. NotifyFlagStaleDays is the age past which an open
 	// flag is announced (default 3).
@@ -114,7 +276,7 @@ func defaults() *Config {
 		Listen:                 "127.0.0.1:4777",
 		UserName:               currentUser(),
 		DryRun:                 true,
-		Budget:                 Budget{GlobalMonthlyUSD: 50, WarnPcts: []int{50, 75, 90}},
+		Budget:                 Budget{GlobalMonthlyUSD: 50, WarnPcts: []int{50, 75, 90}, ExpensiveModels: nil, NullAllowCap: 0},
 		GateWaitSeconds:        30,
 		ApprovalTTLMinutes:     60,
 		WatchIntervalSeconds:   60,

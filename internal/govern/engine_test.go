@@ -66,6 +66,35 @@ func TestBlockRules(t *testing.T) {
 	}
 }
 
+// TestBlockRuleProtectsDandoriHome proves an agent cannot self-disarm the
+// guardrail engine by editing or deleting its own config/db under
+// ~/.dandori/ — the seeded rule must deny both the config-tamper and the
+// db-delete attack, on every home-path spelling an agent might try, while
+// leaving unrelated home-dir commands untouched.
+func TestBlockRuleProtectsDandoriHome(t *testing.T) {
+	e := testEngine(t)
+	seedRun(t, e, "r1", 0)
+	cases := []struct {
+		command string
+		want    Verdict
+	}{
+		{"echo secrets_guard_enabled:false >> ~/.dandori/config.yaml", Deny},
+		{"rm ~/.dandori/dandori.db", Deny},
+		{"rm -rf ~/.dandori", Deny},
+		{"cat $HOME/.dandori/config.yaml", Deny},
+		{"cat /Users/someone/.dandori/config.yaml", Deny},
+		{"cat /home/someone/.dandori/config.yaml", Deny},
+		{"cat ~/.dandori-backup/notes.txt", Allow},
+		{"ls ~/projects", Allow},
+	}
+	for _, c := range cases {
+		d := e.Evaluate(context.Background(), bashCall("r1", c.command))
+		if d.Verdict != c.want {
+			t.Errorf("%q → %s (%s), want %s", c.command, d.Verdict, d.Reason, c.want)
+		}
+	}
+}
+
 func TestSandboxWriteOutsideCwd(t *testing.T) {
 	e := testEngine(t)
 	seedRun(t, e, "r2", 0)
@@ -107,9 +136,10 @@ func TestBudgetBreaker(t *testing.T) {
 	e := testEngine(t)
 	e.Cfg.Budget.GlobalMonthlyUSD = 10
 	seedRun(t, e, "r3", 11) // over the $10 global budget
+	e.St.DB.Exec(`UPDATE runs SET model = 'claude-opus-4-8' WHERE id = 'r3'`)
 	d := e.Evaluate(context.Background(), bashCall("r3", "ls"))
 	if d.Verdict != Deny {
-		t.Fatalf("over budget must deny, got %s", d.Verdict)
+		t.Fatalf("over budget on an expensive model must deny, got %s", d.Verdict)
 	}
 
 	// Warn events: fresh engine under budget crosses 75% once.

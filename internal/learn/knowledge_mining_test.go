@@ -391,11 +391,11 @@ func TestMineRunsEmptyWindow(t *testing.T) {
 	}
 }
 
-// TestMigration017AppliesCleanOnFleetCopy copies the REAL fleet DB (never
-// touches the original) into a fresh temp dir and asserts migration 017
-// applies cleanly: user_version reaches 17, and pre-existing knowledge_units
-// rows (if any) default origin='human' (no backfill, per spec).
-func TestMigration017AppliesCleanOnFleetCopy(t *testing.T) {
+// TestMigrationsApplyCleanOnFleetCopy copies the REAL fleet DB (never
+// touches the original) into a fresh temp dir and asserts migrations apply
+// cleanly to the latest user_version, and pre-existing knowledge_units rows
+// (if any) default origin='human' (no backfill, per spec).
+func TestMigrationsApplyCleanOnFleetCopy(t *testing.T) {
 	fleetPath := realFleetDBPath(t)
 	if fleetPath == "" {
 		t.Skip("no real fleet DB found at ~/.dandori/dandori.db — skipping copy-based migration test")
@@ -412,8 +412,8 @@ func TestMigration017AppliesCleanOnFleetCopy(t *testing.T) {
 	if err := st.DB.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 17 {
-		t.Errorf("user_version after migrate = %d, want 17", version)
+	if version != 19 {
+		t.Errorf("user_version after migrate = %d, want 19", version)
 	}
 
 	rows, err := st.DB.Query(`SELECT origin FROM knowledge_units`)

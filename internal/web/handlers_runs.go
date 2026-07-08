@@ -115,6 +115,13 @@ func (s *Server) handleRunDetail(w http.ResponseWriter, r *http.Request) {
 		trace := learn.Trace(toTraceEvents(events))
 		data["Trace"] = trace
 	}
+	// G5 risk-score badge: read-only, computed on render — best-effort (a
+	// query failure just hides the badge, it must not fail the whole page).
+	eng := govern.NewEngine(s.Cfg, s.Store)
+	if score, err := eng.RiskScore(id); err == nil {
+		data["RiskScore"] = score
+		data["RiskThreshold"] = s.Cfg.RiskScore.ThresholdValue()
+	}
 	s.render(w, r, "run_detail", data)
 }
 

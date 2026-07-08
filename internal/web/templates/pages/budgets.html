@@ -1,6 +1,7 @@
 {{define "content"}}
 <h1 class="text-2xl font-bold mb-1">Budgets</h1>
 <p class="text-gray-500 mb-4">Circuit breaker limits per scope. Changes apply to the very next tool call.</p>
+<p class="text-gray-500 mb-4 text-sm">Over budget, the default <strong>downgrade</strong> mode only blocks tool calls on an expensive model (e.g. opus, fable) — the agent is told to switch model via <code>/model</code> and can keep working on a cheaper one; a run whose model isn't known yet is allowed through a small monthly cap before it's treated as expensive. Set <code>budget.mode: hard</code> in config.yaml to restore the stricter behavior: every tool call is blocked once any scope is over budget, regardless of model.</p>
 
 <div hx-get="/budgets" hx-trigger="every 10s" hx-target="#budgets-table" hx-swap="outerHTML">
   {{template "budgets_table" .}}

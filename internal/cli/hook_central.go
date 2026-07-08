@@ -80,8 +80,8 @@ func centralPreToolVerdict(c *ingest.Client, in capture.HookInput, agentID, proj
 	tc := govern.ExtractToolCall(in.SessionID, agentID, project, in.CWD, in.ToolName, in.ToolInput)
 	snap := c.Policy()
 	if snap == nil {
-		// Never had a policy and the server is unreachable: deny only what
-		// can change state — capture keeps spooling, sessions keep reading.
+		// central-no-snapshot, FailClosedMutating (contract.go): deny only
+		// what can change state — capture keeps spooling, sessions keep reading.
 		if govern.MutatingTool(tc.ToolName) {
 			return printVerdict(govern.Decision{Verdict: govern.Deny,
 				Reason: "[dandori] không lấy được chính sách từ server trung tâm — lệnh ghi/sửa bị chặn để an toàn (đọc vẫn chạy)"})

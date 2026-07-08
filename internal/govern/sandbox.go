@@ -26,6 +26,9 @@ func ExtractToolCall(runID, agentID, project, cwd, toolName string, toolInput []
 		Command      string `json:"command"`
 		FilePath     string `json:"file_path"`
 		NotebookPath string `json:"notebook_path"`
+		Content      string `json:"content"`    // Write
+		NewString    string `json:"new_string"` // Edit
+		NewSource    string `json:"new_source"` // NotebookEdit
 	}
 	_ = json.Unmarshal(toolInput, &in)
 	tc.Command = in.Command
@@ -36,6 +39,14 @@ func ExtractToolCall(runID, agentID, project, cwd, toolName string, toolInput []
 	}
 	if in.Command != "" {
 		tc.Paths = append(tc.Paths, pathTokens(in.Command)...)
+	}
+	switch toolName {
+	case "Write":
+		tc.Content = in.Content
+	case "Edit":
+		tc.Content = in.NewString
+	case "NotebookEdit":
+		tc.Content = in.NewSource
 	}
 	return tc
 }

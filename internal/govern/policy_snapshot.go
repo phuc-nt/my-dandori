@@ -91,6 +91,12 @@ func BuildPolicySnapshot(st *store.Store, monthlyBudget float64) (*PolicySnapsho
 // Evaluate mirrors Engine.Evaluate's fixed order against the snapshot:
 // kill → block → budget → gate/band. Same contract, evaluated offline.
 // Bad rule patterns fail CLOSED like the engine does.
+//
+// G5 (risk score, internal/govern/risk.go) is intentionally ABSENT here and
+// must stay that way: it needs local `events` + `audit_log` history and the
+// findOrCreateApproval/waitDecision machinery, none of which exist on the
+// offline snapshot path. Do not add a DB query here to "helpfully" support
+// it — see TestSnapshotEvaluateHasNoRiskBranch.
 func (p *PolicySnapshot) Evaluate(tc ToolCall) Decision {
 	if p.KillGlobal {
 		return Decision{Deny, "[dandori kill] global kill switch is ON — all agent tool calls are blocked"}
@@ -113,6 +119,26 @@ func (p *PolicySnapshot) Evaluate(tc ToolCall) Decision {
 			return Decision{Deny, fmt.Sprintf("[dandori G1] blocked: %s (rule #%d)", r.Description, r.ID)}
 		}
 	}
+	// G1.5 secret-Deny (regex-only half of checkSecrets): a strict-secret
+	// pattern in Command/Content is denied here too, since it needs no DB
+	// lookup and central-mode pre-tool checks must not be weaker than local.
+	// The PII→gate half of G1.5 is LOCAL-ONLY: it needs findOrCreateApproval
+	// (a DB row + wait-for-human), which the snapshot has no access to on a
+	// dev machine evaluating offline. A PII-bearing call in central mode
+	// falls through to whatever gate/band rule would otherwise apply.
+	if hit, kind := snapshotSecretMatch(tc); hit {
+		return Decision{Deny, fmt.Sprintf("[dandori G1.5] %s detected — value withheld from logs/audit", kind)}
+	}
+	// Central mode is hard-stop ONLY — it never applies the local downgrade-gate
+	// (Budget.Mode, ExpensiveModels, per-run model, agent/project scoping).
+	// BudgetExceeded here is a single global bool computed server-side with no
+	// per-run model info and no DB to run runModel/nullAllowGate against, so
+	// there is nothing to downgrade against. A dev machine pulling this
+	// snapshot always hard-denies mutating tools once the org-wide budget is
+	// exhausted; the downgrade-gate only exists in Engine.checkBudget's local
+	// evaluation path (internal/govern/budget.go). This is intentional, not a
+	// TODO: closing it would require pushing per-run model + per-scope budgets
+	// into the snapshot payload, which is out of scope here.
 	if p.BudgetExceeded && (isEditTool(tc.ToolName) || tc.ToolName == "Bash") {
 		return Decision{Deny, "[dandori G3] monthly budget exhausted — mutating tool calls are blocked until the budget is raised"}
 	}
@@ -168,4 +194,17 @@ func (p *PolicySnapshot) ruleMatches(r *SnapshotRule, tc ToolCall) (bool, error)
 // fail-closed path denies when NO policy is available at all.
 func MutatingTool(name string) bool {
 	return isEditTool(name) || name == "Bash"
+}
+
+// snapshotSecretMatch runs the same strict-secret/Bearer check checkSecrets
+// uses locally, scoped to Command+Content and capped the same way (scanCap,
+// head+tail) — kept as a plain function (no DB) so it is safe to call from
+// the snapshot's offline Evaluate.
+func snapshotSecretMatch(tc ToolCall) (bool, string) {
+	for _, window := range scanWindows(tc.Command, tc.Content) {
+		if kind, ok := secretKind(window); ok {
+			return true, kind
+		}
+	}
+	return false, ""
 }

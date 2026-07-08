@@ -34,6 +34,11 @@ type ToolCall struct {
 	ToolName string
 	Command  string   // Bash command, if any
 	Paths    []string // file paths touched (Write/Edit + extracted from Bash)
+	// Content is the payload a mutating tool is about to write: Write's
+	// `content`, Edit's `new_string`, NotebookEdit's `new_source`. Populated
+	// by ExtractToolCall — checkSecrets scans this alongside Command since a
+	// secret/PII value can arrive in file content, not just a shell command.
+	Content string
 }
 
 type Engine struct {
@@ -47,7 +52,8 @@ func NewEngine(cfg *config.Config, st *store.Store) *Engine {
 }
 
 // Evaluate runs the check chain in fixed order: kill switch → sandbox →
-// block rules → budget → permission gate. First hit wins.
+// block rules → secrets → budget → risk score (G5) → permission gate. First
+// hit wins.
 func (e *Engine) Evaluate(ctx context.Context, tc ToolCall) Decision {
 	if d, hit := e.checkKill(tc); hit {
 		return e.record(tc, "kill_block", d)
@@ -57,14 +63,20 @@ func (e *Engine) Evaluate(ctx context.Context, tc ToolCall) Decision {
 	}
 	rules, err := e.loadRules()
 	if err != nil {
-		// fail-close: cannot evaluate contract rules → deny
+		// rules-load, FailClosed (contract.go): cannot evaluate contract rules → deny
 		return e.record(tc, "engine_error", Decision{Deny, "[dandori] internal error evaluating guardrails: " + err.Error()})
 	}
 	if d, hit := e.checkBlockRules(tc, rules); hit {
 		return e.record(tc, "guardrail_block", d)
 	}
+	if d, hit := e.checkSecrets(ctx, tc); hit {
+		return e.record(tc, "secrets_block", d)
+	}
 	if d, hit := e.checkBudget(tc); hit {
 		return e.record(tc, "budget_block", d)
+	}
+	if d, hit := e.checkRisk(ctx, tc); hit {
+		return e.record(tc, "risk_gate", d)
 	}
 	if d, hit := e.checkGate(ctx, tc, rules); hit {
 		return e.record(tc, "gate_decision", d)

@@ -97,6 +97,24 @@ func TestSnapshotBadPatternFailsClosed(t *testing.T) {
 	}
 }
 
+// TestSnapshotSecretDeny proves the central-mode snapshot denies strict
+// secrets without any DB access (regex-only half of G1.5), while a
+// PII-bearing call is NOT gated centrally — PII-gate needs findOrCreateApproval
+// (a DB row + wait), which is local-mode only; central falls through to
+// whatever gate/band rule would otherwise apply.
+func TestSnapshotSecretDeny(t *testing.T) {
+	snap := &PolicySnapshot{Bands: map[string]string{}}
+	secretCall := ToolCall{RunID: "r", AgentID: "a", ToolName: "Bash", Command: "export KEY=AKIAABCDEFGHIJKLMNOP"}
+	if d := snap.Evaluate(secretCall); d.Verdict != Deny {
+		t.Errorf("snapshot secret-Deny: %s, want Deny", d.Verdict)
+	}
+
+	piiCall := ToolCall{RunID: "r", AgentID: "a", ToolName: "Write", Content: "card 4111111111111111"}
+	if d := snap.Evaluate(piiCall); d.Verdict == Deny {
+		t.Errorf("PII must not be denied centrally (local-only gate), got Deny: %s", d.Reason)
+	}
+}
+
 // BuildPolicySnapshot pulls real state so the wire snapshot mirrors the DB.
 func TestBuildPolicySnapshot(t *testing.T) {
 	e := testEngine(t)
