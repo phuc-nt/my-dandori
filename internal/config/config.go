@@ -47,7 +47,12 @@ type Config struct {
 	// run's cwd). Defaults true. Set false to let runs edit sibling repos on a
 	// trusted single-dev machine — loses the isolation guarantee, so keep it on
 	// for multi-user / shared setups.
-	SandboxEnabled  *bool `yaml:"sandbox_enabled"`
+	SandboxEnabled *bool `yaml:"sandbox_enabled"`
+	// BlockEnabled gates the G1 block guardrail (rm -rf /, reading .env, DROP
+	// TABLE, force-push). Defaults true — this is the last-line safety net.
+	// Set false ONLY on a trusted single-dev machine; dangerous commands then
+	// run unblocked.
+	BlockEnabled    *bool `yaml:"block_enabled"`
 	LearnWindowDays int   `yaml:"learn_window_days"`
 	// v8 notifications. PublicBaseURL is the console origin used to build deep
 	// links in Slack alerts. NotifyFlagStaleDays is the age past which an open

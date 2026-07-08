@@ -87,6 +87,12 @@ func (r *Rule) matches(tc ToolCall) bool {
 
 // checkBlockRules denies on the first matching block rule (G1).
 func (e *Engine) checkBlockRules(tc ToolCall, rules []Rule) (Decision, bool) {
+	// G1 opt-out: a nil flag means enabled (safe default — G1 is the last-line
+	// guard against rm -rf /, reading .env, DROP TABLE, force-push). Only an
+	// explicit false disables it, on a trusted single-dev machine.
+	if e.Cfg != nil && e.Cfg.BlockEnabled != nil && !*e.Cfg.BlockEnabled {
+		return Decision{}, false
+	}
 	for _, r := range rules {
 		if r.Kind == "block" && r.appliesTo(tc) && r.matches(tc) {
 			return Decision{Deny, fmt.Sprintf("[dandori G1] blocked: %s (rule #%d)", r.Description, r.ID)}, true
