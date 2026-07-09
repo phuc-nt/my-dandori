@@ -29,14 +29,17 @@ Mở console lần đầu sẽ thấy **trình hướng dẫn thiết lập** (`
 
 ```
 Claude Code ──PreToolUse──▶ dandori hook pre-tool
-   kill switch → sandbox scope → block rules → budget breaker → permission gate
+   kill switch → sandbox scope → block rules → secret/PII → budget → risk score → gate
    allow: im lặng · deny/ask: JSON permissionDecision (+ event + audit hash-chain)
 ```
 
-- **Block** (G1): `rm -rf /`, đụng `.env`, force-push… — deny thẳng.
+- **Block** (G1): `rm -rf /`, đụng `.env`, force-push, đụng `~/.dandori/` (chống agent tự tắt guardrail)… — deny thẳng.
 - **Sandbox** (G2): Write/Edit ngoài working dir của run — deny.
-- **Budget** (G3): vượt trần tháng theo global/agent/project — deny; cảnh báo 50/75/90% → Slack.
+- **Secret/PII** (G1.5): secret (sk-/AKIA/PEM/Bearer non-env-ref) trong lệnh hoặc nội dung file → deny (không echo giá trị); PII (thẻ Luhn / email hàng loạt) → gate. Bật độc lập G1/G2 (`secrets_guard_enabled`).
+- **Budget** (G3): vượt trần tháng → **downgrade-gate** (chỉ deny run đang chạy model đắt, model rẻ chạy tiếp + gợi ý `/model`); `budget.mode: hard` giữ hard-stop cũ. Cảnh báo 50/75/90% → Slack.
+- **Risk score** (G5): tích điểm rủi ro theo cửa sổ trượt; mặc định **log-only** (quan sát), `risk_score.mode: gate` để chặn sau khi calibrate.
 - **Gate** (G4): `git push`, merge PR, deploy — tạo approval, chờ người duyệt (web hoặc Slack reaction ✅/❌) tối đa `gate_wait_seconds`, rồi deny kèm hướng dẫn retry.
+- **Break-glass**: nếu DB hỏng khiến guardrail fail-closed chặn mọi lệnh, đặt env `DANDORI_GOVERN_FAIL_OPEN=1` để tạm mở (log mỗi lần active).
 
 ## Lệnh chính
 

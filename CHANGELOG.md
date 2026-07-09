@@ -3,6 +3,15 @@
 Mọi thay đổi đáng kể của Dandori. Định dạng theo [Keep a Changelog](https://keepachangelog.com/);
 mỗi mốc là một "version" nội bộ (một sprint có kế hoạch + red-team + review). Ngày theo `YYMMDD`.
 
+## [v14] — GOVERN Hardening — 260708
+
+Bốn nâng cấp guardrail nhặt từ so sánh với Omnigent (meta-harness), qua red-team 3 reviewer (10 finding, 4 Critical) trước khi code.
+
+- **Fail-closed contract** (`internal/govern/contract.go`): một nguồn sự thật cho hành vi mọi check khi không eval được. Vá 4 nhánh fail-open trên đường hook local (DB lỗi từng lặng lẽ tắt sạch guardrail). Break-glass env `DANDORI_GOVERN_FAIL_OPEN=1` để DB hỏng không brick máy. Seed rule chặn agent đụng `~/.dandori/` (tự tắt guardrail).
+- **Secret/PII guardrail (G1.5)**: secret strict-set → deny (không echo giá trị); PII (thẻ Luhn / ≥5 email) → gate. `redact` thành superset đóng lỗ rò PII vào approvals/Slack; approvals unique index đóng TOCTOU. Replay fleet thật: **0/6520 false-positive**. Chạy độc lập G1/G2.
+- **Budget downgrade-gate (G3)**: vượt trần → chỉ deny run model đắt (gợi ý `/model`), model rẻ chạy tiếp; `budget.mode: hard` giữ hard-stop cũ. Chống né qua NULL-model (agent-history fallback + cap/tháng). Default `["opus","fable"]` chốt từ pricing thật.
+- **Risk-score guardrail (G5)**: điểm rủi ro cửa sổ trượt, self-exclusion qua `audit_log.action` (không ratchet tự khuếch đại). Mặc định **log-only**; gate opt-in sau calibrate. Badge run-detail.
+
 ## [v13] — Kit & Mining — 260707
 
 - **Mining queue** (`/knowledge/mining`): 4 tín hiệu SQL on-demand (corrective-steering-rồi-done, fail→retry→success, guardrail-block-rồi-done, cost-outlier) surface "run đáng đọc". Không phải leaderboard, dismiss chỉ ẩn khỏi danh sách đọc.
