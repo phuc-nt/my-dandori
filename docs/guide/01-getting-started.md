@@ -23,6 +23,12 @@ Ra file `./dandori`. Có thể copy vào `$PATH` (vd `~/go/bin/`) để gọi `d
 
 Console mở tại **http://127.0.0.1:4777**. Lần đầu, nó dẫn bạn qua trang **`/welcome`** với 3 bước thiết lập. `serve` cũng chạy nền: watcher (bắt run lọt hook), Jira sync, Slack worker.
 
+Sau khi có vài run, trang standup (kỹ thuật) hoặc bảng điều hành (CEO) trông thế này — mọi con số đều có nút hành động đứng cạnh:
+
+![Standup — trang chủ kỹ thuật](../assets/screenshots/01-standup-home.png)
+
+*(Xem thêm ảnh các trang khác ở [docs/03-features.md §Console thật trông thế nào](../03-features.md) và [docs/assets/screenshots/](../assets/screenshots/).)*
+
 > Mặc định console chỉ nghe **localhost** — an toàn cho một máy. Muốn nghe LAN cần cấu hình `listen` khác + HTTPS (xem [admin guide](04-admin.md)).
 
 ## Bước 2 — Kết nối một dự án

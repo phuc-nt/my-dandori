@@ -113,6 +113,28 @@ Ba trụ ánh xạ thẳng: **CAPTURE** = evidence/attribution, **GOVERN** = run
 >
 > Với data đã CAPTURE + bốn service liên kết (Jira · Confluence · GitHub · Drive) + agent runtime, UI làm được nhiều hơn hẳn việc nhìn. HTMX hợp đúng mấy dạng này: live-queue poll, inline-edit, wizard form, drill-down panel — round-trip server rẻ, không cần SPA.
 
+### Console thật trông thế nào
+
+*(Ảnh chụp từ console chạy thật trên data demo — biểu đồ Chart.js trống trong ảnh do render offline, các bảng số là chính.)*
+
+**Điều hành (CEO):** giá trị AI mang lại + việc cần duyệt, tiếng Việt.
+
+![Bảng điều hành CEO](assets/screenshots/20-exec-ceo-home.png)
+
+**Org dashboard — leaderboard calibrate theo fleet** (grade A–F, Wilson CI, band, ROI, DORA):
+
+![Org dashboard + leaderboard](assets/screenshots/02-org-dashboard-leaderboard.png)
+
+**Run detail — drill xuống từng tool-call** (cost/token, badge **Risk score G5**, PR-review + calendar action, AI-draft, timeline):
+
+![Chi tiết một run](assets/screenshots/04-run-detail.png)
+
+**Review queue — đóng vòng governance** (approve/reject → audit bất biến):
+
+![Hàng đợi duyệt](assets/screenshots/06-reviews-approval-queue.png)
+
+Thêm: [rủi ro một trang](assets/screenshots/05-risk-overview.png) · [budgets](assets/screenshots/07-budgets.png) · [guardrail rules](assets/screenshots/09-guardrail-rules.png) · [insights](assets/screenshots/08-insights.png) · [mining queue](assets/screenshots/11-mining-queue.png) · [standup](assets/screenshots/01-standup-home.png). Toàn bộ trong [docs/assets/screenshots/](assets/screenshots/).
+
 ### U-A · Điều khiển đội agent (fleet control)
 
 | # | Feature | User *làm gì* | Trụ | Service | Ưu tiên |
