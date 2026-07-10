@@ -10,7 +10,9 @@ Vision đầy đủ: [docs/01-product-vision.md](docs/01-product-vision.md) · T
 
 > **📘 Hướng dẫn sử dụng tiếng Việt: [docs/guide/](docs/guide/)** — bắt đầu, guide theo vai (engineer/manager/admin), luồng tri thức, và bảng tra cứu đầy đủ.
 
-Ngoài ba trụ nền, Dandori nay còn: **đăng nhập + phân quyền** (admin/viewer, principal thật vào audit — v10) · **insights hiệu suất chi phí** theo model/project với Wilson CI (v11) · **luồng tri thức** cá nhân→tổ chức→cá nhân: mining practice, AI-draft, phân phối skill/agent-kit hash-pinned (v12–v13).
+Ngoài ba trụ nền, Dandori nay còn: **đăng nhập + phân quyền** (admin/viewer, principal thật vào audit — v10) · **insights hiệu suất chi phí** theo model/project với Wilson CI (v11) · **luồng tri thức** cá nhân→tổ chức→cá nhân: mining practice, AI-draft, phân phối skill/agent-kit hash-pinned (v12–v13) · **guardrail secret/PII + risk-score, budget downgrade** (v14) · **central-mode parity**: audit co-signed, distribution ký, compliance export (v15).
+
+Chi tiết vận hành theo vai ở [docs/guide/](docs/guide/) — riêng bật **audit signing** & central-mode xem [guide Admin](docs/guide/04-admin.md).
 
 ## Cài đặt
 

@@ -30,11 +30,15 @@ Vào **`/dash/agent/{tên-agent}`**. Mỗi agent được chấm 4 chỉ số (0
 Nếu Claude Code báo bị deny với `[dandori G...]`, đó là guardrail gác **trước khi** lệnh chạy:
 
 - **G1 block** — lệnh nguy hiểm (`rm -rf /`, đụng `.env`, force-push). Deny thẳng, không qua được.
+- **G1.5 secret/PII** (v14) — lệnh có API key / private key / Bearer token nguy hiểm, hoặc ≥5 email / Luhn card. Secret → Deny thẳng (giấu giá trị). PII → Tạo yêu cầu duyệt.
 - **G2 sandbox** — Write/Edit ra ngoài thư mục dự án. Deny.
-- **G3 budget** — vượt trần chi phí tháng. Deny.
+- **G3 budget** (v14 thay đổi) — vượt trần chi phí tháng. **Nếu model của run lắm tiền (opus, fable)**, báo `/model` hint — thử chuyển sang model rẻ. Nếu model sẵn rẻ → cho qua.
 - **G4 gate** — `git push` / merge PR / deploy. Tạo **yêu cầu duyệt**, chờ người admin duyệt (web `/reviews` hoặc Slack ✅), rồi cho qua hoặc từ chối.
+- **G5 risk-score** (v14) — dùng tool quá dày hay bị deny quá nhiều trong cửa sổ trượt? Escalate cần duyệt (nếu admin bật mode gate) hoặc ghi log (mode mặc định).
 
-Nếu bị gate chặn: nhờ admin/manager duyệt ở `/reviews`, hoặc chờ reaction Slack. Guardrail nằm **ngoài code của agent** nên không lách được bằng prompt — đó là chủ đích.
+Nếu bị gate/duyệt chặn: nhờ admin/manager duyệt ở `/reviews`, hoặc chờ reaction Slack. Guardrail nằm **ngoài code của agent** nên không lách được bằng prompt — đó là chủ đích.
+
+**Các risk-score:** để ý badge "risk score" trên trang chi tiết run nếu đơn vị của bạn đã bật G5 gate mode.
 
 ---
 
