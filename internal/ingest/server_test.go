@@ -183,3 +183,112 @@ func TestPolicyEndpoint(t *testing.T) {
 		t.Errorf("snapshot: %+v err=%v", snap, err)
 	}
 }
+
+// TestPolicyEndpointServerCached proves the server-side rebuild cache (fix
+// G — handlePolicy must not recompute RiskScore for every active run on
+// every single poll from every fleet machine): a state change made directly
+// in the store between two rapid requests for the SAME operator must not be
+// visible until the cache TTL elapses — the second response is served from
+// cache, not rebuilt.
+func TestPolicyEndpointServerCached(t *testing.T) {
+	s, st := testServer(t)
+	pollAs := func(token string) bool {
+		req := httptest.NewRequest(http.MethodGet, "/ingest/policy", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("policy: %d", w.Code)
+		}
+		var snap struct {
+			KillGlobal bool `json:"kill_global"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &snap); err != nil {
+			t.Fatal(err)
+		}
+		return snap.KillGlobal
+	}
+
+	if got := pollAs("secret-token"); got {
+		t.Fatalf("first poll: kill_global = %v, want false (nothing set yet)", got)
+	}
+	st.SetSetting("kill_switch_global", "1") // mutate directly, bypassing the cache
+	if got := pollAs("secret-token"); got {
+		t.Errorf("second rapid poll (same operator) = %v, want false — cache must serve the stale build, not rebuild", got)
+	}
+
+	// A genuinely different operator gets its own cache slot: it has never
+	// polled before, so its first request is a cache MISS and must rebuild
+	// fresh — seeing the kill switch that was already set above, proving the
+	// legacy principal's cached (stale) entry did not leak into or block a
+	// different operator's slot.
+	otherToken := seedOperatorToken(t, s, "operator-other", "other-laptop")
+	if got := pollAs(otherToken); !got {
+		t.Errorf("new operator's first poll = %v, want true (fresh build reflects current state, own cache slot)", got)
+	}
+}
+
+// TestPolicyEndpointScopedPerOperator is THE leak-J end-to-end test: operator
+// B's /ingest/policy response must never contain operator A's run id, even
+// though both runs exist in the same database and both operators poll the
+// same endpoint.
+func TestPolicyEndpointScopedPerOperator(t *testing.T) {
+	s, st := testServer(t)
+	tokenA := seedOperatorToken(t, s, "operator-a", "a-laptop")
+	tokenB := seedOperatorToken(t, s, "operator-b", "b-laptop")
+
+	// Only tool_use/tool_result events, no finalize record — the run stays
+	// 'running' (finalize is what would flip it to 'done'), so it is
+	// score-eligible under the active-run 24h bound.
+	toolEventBatch := func(runID string) Batch {
+		ok := int64(1)
+		return Batch{Records: []Record{
+			{Type: "event", SessionID: runID, AgentName: "My Agent", Project: "proj",
+				ULID: runID + "-1", Kind: "tool_use", Tool: "Bash", Payload: "go test", ClientTS: "2026-07-02T10:00:00Z"},
+			{Type: "event", SessionID: runID, AgentName: "My Agent", Project: "proj",
+				ULID: runID + "-2", Kind: "tool_result", Tool: "Bash", OK: &ok, Payload: "ok"},
+		}}
+	}
+	if w := postBatch(t, s.Handler(), tokenA, toolEventBatch("run-a")); w.Code != http.StatusOK {
+		t.Fatalf("post A: %d %s", w.Code, w.Body)
+	}
+	if w := postBatch(t, s.Handler(), tokenB, toolEventBatch("run-b")); w.Code != http.StatusOK {
+		t.Fatalf("post B: %d %s", w.Code, w.Body)
+	}
+	// sampleBatch's tool_use event has ts in 2026 — outside the 24h active
+	// window from "now" in a real clock, so force started_at to now for both
+	// runs to make them score-eligible under the zombie bound.
+	if _, err := st.DB.Exec(`UPDATE runs SET started_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')`); err != nil {
+		t.Fatal(err)
+	}
+
+	fetchPolicy := func(token string) map[string]int {
+		req := httptest.NewRequest(http.MethodGet, "/ingest/policy", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("policy: %d %s", w.Code, w.Body)
+		}
+		var snap struct {
+			RiskScores map[string]int `json:"risk_scores"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &snap); err != nil {
+			t.Fatal(err)
+		}
+		return snap.RiskScores
+	}
+
+	scoresB := fetchPolicy(tokenB)
+	if _, leaked := scoresB["run-a"]; leaked {
+		t.Errorf("operator B's snapshot leaks operator A's run: %+v", scoresB)
+	}
+	if _, present := scoresB["run-b"]; !present {
+		t.Errorf("operator B's snapshot missing its own run: %+v", scoresB)
+	}
+
+	scoresA := fetchPolicy(tokenA)
+	if _, leaked := scoresA["run-b"]; leaked {
+		t.Errorf("operator A's snapshot leaks operator B's run: %+v", scoresA)
+	}
+}

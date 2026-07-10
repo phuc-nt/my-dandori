@@ -414,12 +414,12 @@ func TestE2EKnowledge01_09_FullLoop(t *testing.T) {
 	}
 
 	// Audit hash-chain must be intact after the whole 9-step loop.
-	broken, err := govern.Verify(s.Store)
+	broken, reason, err := govern.Verify(s.Store)
 	if err != nil {
 		t.Fatalf("govern.Verify: %v", err)
 	}
-	if broken != 0 {
-		t.Fatalf("govern.Verify() after full loop = broken at %d, want 0 (intact)", broken)
+	if reason != "" {
+		t.Fatalf("govern.Verify() after full loop = broken at %d reason=%q, want intact", broken, reason)
 	}
 }
 

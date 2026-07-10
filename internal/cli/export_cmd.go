@@ -57,8 +57,9 @@ var exportCmd = &cobra.Command{
 			return err
 		}
 		if flagExportOut != "" {
-			fmt.Printf("compliance bundle → %s (chain ok: %v, %d audit entries)\n",
-				flagExportOut, bundle.Verify.OK, len(bundle.AuditLog))
+			fmt.Printf("compliance bundle → %s (chain ok: %v, %d audit entries, %d signed / %d unsigned, %d coverage gaps, %d missing-audit)\n",
+				flagExportOut, bundle.Verify.OK, len(bundle.AuditLog), bundle.SignedCount, bundle.UnsignedCount,
+				len(bundle.Coverage.DetectorFlags), len(bundle.Coverage.MissingAudit))
 		}
 		return nil
 	},

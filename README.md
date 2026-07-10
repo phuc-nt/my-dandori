@@ -79,6 +79,8 @@ Claude Code ──PreToolUse──▶ dandori hook pre-tool
 
 Server: `dandori serve` với `DANDORI_INGEST_TOKEN` set → mở thêm listener `0.0.0.0:4778` (Bearer token, tách hẳn console 127.0.0.1). Máy dev: `dandori connect http://server:4778 --token X` — hook parse transcript tại chỗ, chỉ gửi **số liệu đã redact** (không gửi transcript), offline thì spool rồi relay. Pre-tool guardrail chạy local qua policy snapshot.
 
+**Parity central↔local (v15):** central-mode run giờ tạo **audit hash-chain co-signed** trên server (Ed25519 + signed checkpoint neo ngoài box — chống rebuild/truncation); G5 risk-score + G3 budget chạy trong snapshot (scoped per-operator, không rò fleet data; budget vượt trần → Ask vì central không biết model để downgrade); `skill/kit pull` kéo qua server, verify `sha256(bytes)==approve-hash` + chữ ký per-unit (chống server độc tráo bytes); `dandori export compliance` gồm cả central run + disclose giới hạn client-attested. Ký bằng `DANDORI_AUDIT_SIGNING_KEY` (`dandori audit keygen`); auditor pin **fingerprint** (`dandori audit pubkey`) out-of-band. Central guardrail vẫn là **advisory** (verdict chạy máy dev) — audit là bằng chứng từ server-receipt trở đi, không claim tuyệt đối.
+
 ## Chế độ CEO vs Kỹ thuật
 
 Console có 2 mặt (nút chuyển ở thanh nav, nhớ bằng cookie):

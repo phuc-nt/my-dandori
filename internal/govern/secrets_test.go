@@ -35,7 +35,7 @@ func TestSecretDenyAcrossToolSurfaces(t *testing.T) {
 		{"Write content", toolCallWithContent(t, "s1", "Write", "content", "API_KEY="+secret)},
 		{"Edit new_string", toolCallWithContent(t, "s1", "Edit", "new_string", "const key = \""+secret+"\"")},
 		{"NotebookEdit new_source", toolCallWithContent(t, "s1", "NotebookEdit", "new_source", "os.environ['X']='"+secret+"'")},
-		{"AWS key", bashCall("s1", "export AWS_KEY=AKIAABCDEFGHIJKLMNOP")},
+		{"AWS key", bashCall("s1", "export AWS_KEY=AKIAIOSFODNN7EXAMPLE")},
 		{"private key", toolCallWithContent(t, "s1", "Write", "content", "-----BEGIN RSA PRIVATE KEY-----\nMII...")},
 	}
 	for _, c := range cases {
@@ -44,12 +44,12 @@ func TestSecretDenyAcrossToolSurfaces(t *testing.T) {
 			if d.Verdict != Deny {
 				t.Fatalf("%s: verdict %s, want Deny", c.name, d.Verdict)
 			}
-			if strings.Contains(d.Reason, secret) || strings.Contains(d.Reason, "AKIAABCDEFGHIJKLMNOP") {
+			if strings.Contains(d.Reason, secret) || strings.Contains(d.Reason, "AKIAIOSFODNN7EXAMPLE") {
 				t.Errorf("%s: deny reason echoes raw secret: %s", c.name, d.Reason)
 			}
 			var auditDetail string
 			e.St.DB.QueryRow(`SELECT detail FROM audit_log ORDER BY id DESC LIMIT 1`).Scan(&auditDetail)
-			if strings.Contains(auditDetail, secret) || strings.Contains(auditDetail, "AKIAABCDEFGHIJKLMNOP") {
+			if strings.Contains(auditDetail, secret) || strings.Contains(auditDetail, "AKIAIOSFODNN7EXAMPLE") {
 				t.Errorf("%s: audit log echoes raw secret: %s", c.name, auditDetail)
 			}
 		})
@@ -155,7 +155,7 @@ func TestSecretsGuardDisabled(t *testing.T) {
 	disabled := false
 	e.Cfg.SecretsGuardEnabled = &disabled
 
-	secretCall := bashCall("s6", "export KEY=AKIAABCDEFGHIJKLMNOP")
+	secretCall := bashCall("s6", "export KEY=AKIAIOSFODNN7EXAMPLE")
 	if d := e.Evaluate(context.Background(), secretCall); d.Verdict != Allow {
 		t.Errorf("secret check disabled but still denied: %s", d.Reason)
 	}

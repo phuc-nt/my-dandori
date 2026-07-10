@@ -14,7 +14,7 @@ func TestSupersetInvariant(t *testing.T) {
 		"xoxb-1234567890-abcdefghij",
 		"ATATT3xFfGF0T1234567890123456789012345",
 		"ghp_abcdefghijklmnopqrstuvwxyz1234567890",
-		"AKIAABCDEFGHIJKLMNOP",
+		"AKIAIOSFODNN7EXAMPLE",
 		"-----BEGIN RSA PRIVATE KEY-----",
 		"Bearer sk-liveTOKEN1234567890ABCDEF",
 		"contact me at jane.doe@example.com",
@@ -35,7 +35,7 @@ func TestSecretStrictRe(t *testing.T) {
 		"xoxb-1234567890-abcdefghij",
 		"ATATT3xFfGF0T1234567890123456789012345",
 		"ghp_abcdefghijklmnopqrstuvwxyz1234567890",
-		"AKIAABCDEFGHIJKLMNOP",
+		"AKIAIOSFODNN7EXAMPLE",
 		"-----BEGIN PRIVATE KEY-----",
 		"-----BEGIN RSA PRIVATE KEY-----",
 	}

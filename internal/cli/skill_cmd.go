@@ -12,19 +12,21 @@ import (
 	"github.com/hexops/gotextdiff/span"
 	"github.com/spf13/cobra"
 
+	"github.com/phuc-nt/dandori/internal/config"
 	"github.com/phuc-nt/dandori/internal/govern"
+	"github.com/phuc-nt/dandori/internal/ingest"
 	"github.com/phuc-nt/dandori/internal/learn"
 	"github.com/phuc-nt/dandori/internal/skillreg"
+	"github.com/phuc-nt/dandori/internal/store"
 )
 
 // skillCmd is the P5 pull-only distribution surface for skill-kind
-// knowledge units. LOCAL-MODE-ONLY (F3): it reads the same store any other
-// dandori subcommand uses (openStore) — a fleet with multiple engineer
-// machines, where a skill was published on a DIFFERENT machine's local DB,
-// is NOT reachable yet (central mode = [Sau], tracked in plan.md). Both
-// subcommands treat "not found here" identically to "never published"
-// rather than guessing, since this package cannot tell the two apart without
-// a central server.
+// knowledge units. `skill pull` tries this machine's local store first
+// (skillreg.Get); when the unit is not published here AND central mode is
+// configured (ingest.Enabled), it fetches and independently verifies the
+// unit from the central server instead (central_pull.go) rather than
+// guessing "never published" — see writeSkillPull below for what a central
+// pull skips (RecordUnitAdoption, origin badge) versus a local one.
 var skillCmd = &cobra.Command{
 	Use:   "skill",
 	Short: "Pull reviewed, hash-pinned skills into this repo's .claude/skills/ (pull-only, local-mode)",
@@ -104,12 +106,23 @@ var skillPullCmd = &cobra.Command{
 
 		s, err := skillreg.Get(st, args[0])
 		if err != nil {
-			if err == skillreg.ErrNotFound {
-				// F3 fail-open: clear message, exit cleanly, no crash.
-				fmt.Fprintf(cmd.OutOrStdout(), "unit chưa published ở store này (central mode = [Sau]): %q\n", args[0])
+			if err != skillreg.ErrNotFound {
+				return err
+			}
+			// Not in this machine's local store — try central mode (P5)
+			// before falling back to the F3 fail-open message. A server
+			// error here is NOT silently swallowed as "not found": a wrong
+			// error message would tell an operator to re-nominate a skill
+			// that in fact exists, just currently unreachable.
+			if !ingest.Enabled(cfg) {
+				fmt.Fprintf(cmd.OutOrStdout(), "unit chưa published ở store này (không ở chế độ central — cấu hình server_url/token để pull từ máy khác): %q\n", args[0])
 				return nil
 			}
-			return err
+			central, cErr := centralPullSkill(cfg, args[0])
+			if cErr != nil {
+				return cErr
+			}
+			return writeSkillPull(cmd, cfg, st, central, false)
 		}
 
 		// F7: verify against the audit hash-chain — an INDEPENDENT source
@@ -121,63 +134,87 @@ var skillPullCmd = &cobra.Command{
 		if err := skillreg.Verify(*s, auditHash); err != nil {
 			return err
 		}
+		return writeSkillPull(cmd, cfg, st, s, true)
+	},
+}
 
-		repoRoot, err := findRepoRoot()
-		if err != nil {
-			return err
+// writeSkillPull is the shared diff/confirm/write/audit tail for both the
+// local (isLocal=true, s.UnitID is a real local row) and central
+// (isLocal=false, s.UnitID is the zero value — never used) pull paths. By
+// the time this runs, s.Body has ALREADY passed its verification: F7's
+// skillreg.Verify for a local pull, or the byte-hash + anchor gate
+// (ingest.VerifySkillFetch) for a central one — this function only writes
+// and records, it never verifies.
+func writeSkillPull(cmd *cobra.Command, cfg *config.Config, st *store.Store, s *skillreg.Skill, isLocal bool) error {
+	repoRoot, err := findRepoRoot()
+	if err != nil {
+		return err
+	}
+	target, err := skillreg.LocalPath(repoRoot, s.Name)
+	if err != nil {
+		return err
+	}
+
+	existing, _ := os.ReadFile(target) // best-effort: "" if absent
+	diffText := textDiff(string(existing), s.Body, target+" (hiện tại)", s.Name+" (pull)")
+	fmt.Fprintln(cmd.OutOrStdout(), diffText)
+
+	if !flagSkillPullYes {
+		if !confirmPrompt(cmd, fmt.Sprintf("Ghi %s? [y/N] ", target)) {
+			fmt.Fprintln(cmd.OutOrStdout(), "huỷ — không ghi gì")
+			return nil
 		}
-		target, err := skillreg.LocalPath(repoRoot, s.Name)
-		if err != nil {
-			return err
-		}
+	}
 
-		existing, _ := os.ReadFile(target) // best-effort: "" if absent
-		diffText := textDiff(string(existing), s.Body, target+" (hiện tại)", s.Name+" (pull)")
-		fmt.Fprintln(cmd.OutOrStdout(), diffText)
+	if err := skillreg.Write(target, s.Body); err != nil {
+		return fmt.Errorf("write %s: %w", target, err)
+	}
 
-		if !flagSkillPullYes {
-			if !confirmPrompt(cmd, fmt.Sprintf("Ghi %s? [y/N] ", target)) {
-				fmt.Fprintln(cmd.OutOrStdout(), "huỷ — không ghi gì")
-				return nil
-			}
-		}
-
-		if err := skillreg.Write(target, s.Body); err != nil {
-			return fmt.Errorf("write %s: %w", target, err)
-		}
-
-		operator := cfg.UserName
+	operator := cfg.UserName
+	detail := fmt.Sprintf("name=%s hash=%s actor=%s", s.Name, s.Hash, operator)
+	if isLocal {
+		// RecordUnitAdoption/audit both key off the LOCAL unit_id — a
+		// central pull has no local knowledge_units row to attach to (see
+		// central_pull.go's file doc comment), so both are local-only.
 		if _, err := learn.RecordUnitAdoption(st, s.UnitID, operator, "", true, cfg.LearnWindowDays); err != nil {
 			return fmt.Errorf("write succeeded but RecordUnitAdoption failed: %w", err)
 		}
 		a := &govern.Audit{St: st, Actor: operator}
-		detail := fmt.Sprintf("unit_id=%d name=%s hash=%s actor=%s", s.UnitID, s.Name, s.Hash, operator)
-		if _, err := a.Append("skill_pulled", "skill:"+s.Name, detail); err != nil {
+		if _, err := a.Append("skill_pulled", "skill:"+s.Name, fmt.Sprintf("unit_id=%d %s", s.UnitID, detail)); err != nil {
 			return fmt.Errorf("write succeeded but audit append failed: %w", err)
 		}
-
-		fmt.Fprintf(cmd.OutOrStdout(), "pulled %q → %s\n", s.Name, target)
-		// v13 P2 anti-Goodhart badge: surface origin on pull output too, not
-		// just the web UI, so a CLI-only operator sees whether they just
-		// pulled human-authored, imported, ai-drafted, or detector content.
-		// Best-effort — skillreg.Skill is deliberately narrower than
-		// learn.KnowledgeUnit (doesn't carry Origin), so re-read the unit row
-		// directly rather than widening that package's public type for one
-		// CLI-only line; a lookup failure here must never fail the pull
-		// itself (the write+audit above already succeeded).
-		if u, uErr := learn.GetUnit(st, s.UnitID); uErr == nil && u != nil {
-			origin := u.Origin
-			if origin == "" {
-				origin = "human"
-			}
-			if origin == "ai-draft" && u.OriginModel != "" {
-				fmt.Fprintf(cmd.OutOrStdout(), "origin: %s · %s (human-edited & approved)\n", origin, u.OriginModel)
-			} else {
-				fmt.Fprintf(cmd.OutOrStdout(), "origin: %s\n", origin)
-			}
+	} else {
+		if err := centralAuditFallback(st, operator, "skill_pulled", "skill:"+s.Name, detail); err != nil {
+			return fmt.Errorf("write succeeded but audit append failed: %w", err)
 		}
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "pulled %q → %s\n", s.Name, target)
+	if !isLocal {
+		// Central pulls have no local knowledge_units row to re-read Origin
+		// from (see above) — the origin badge below is local-pull-only.
 		return nil
-	},
+	}
+	// v13 P2 anti-Goodhart badge: surface origin on pull output too, not
+	// just the web UI, so a CLI-only operator sees whether they just
+	// pulled human-authored, imported, ai-drafted, or detector content.
+	// Best-effort — skillreg.Skill is deliberately narrower than
+	// learn.KnowledgeUnit (doesn't carry Origin), so re-read the unit row
+	// directly rather than widening that package's public type for one
+	// CLI-only line; a lookup failure here must never fail the pull
+	// itself (the write+audit above already succeeded).
+	if u, uErr := learn.GetUnit(st, s.UnitID); uErr == nil && u != nil {
+		origin := u.Origin
+		if origin == "" {
+			origin = "human"
+		}
+		if origin == "ai-draft" && u.OriginModel != "" {
+			fmt.Fprintf(cmd.OutOrStdout(), "origin: %s · %s (human-edited & approved)\n", origin, u.OriginModel)
+		} else {
+			fmt.Fprintf(cmd.OutOrStdout(), "origin: %s\n", origin)
+		}
+	}
+	return nil
 }
 
 // textDiff renders a PLAIN TEXT unified diff (F15 — deliberately NOT

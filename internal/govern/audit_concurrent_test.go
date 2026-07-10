@@ -46,7 +46,7 @@ func TestAuditChainConcurrentWriters(t *testing.T) {
 	if count != 2*perWriter {
 		t.Fatalf("entries: %d, want %d", count, 2*perWriter)
 	}
-	if broken, err := Verify(s1); err != nil || broken != 0 {
-		t.Errorf("chain broken at %d (err %v) under concurrent writers", broken, err)
+	if broken, reason, err := Verify(s1); err != nil || reason != "" {
+		t.Errorf("chain broken at %d reason=%q (err %v) under concurrent writers", broken, reason, err)
 	}
 }

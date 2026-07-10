@@ -412,8 +412,8 @@ func TestMigrationsApplyCleanOnFleetCopy(t *testing.T) {
 	if err := st.DB.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 19 {
-		t.Errorf("user_version after migrate = %d, want 19", version)
+	if version != 21 {
+		t.Errorf("user_version after migrate = %d, want 21", version)
 	}
 
 	rows, err := st.DB.Query(`SELECT origin FROM knowledge_units`)

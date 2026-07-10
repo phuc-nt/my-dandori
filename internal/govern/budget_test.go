@@ -166,18 +166,33 @@ func TestBudgetWarnThresholdsUnderLimitRegression(t *testing.T) {
 	}
 }
 
-func TestSnapshotBudgetBranchUnchanged(t *testing.T) {
-	// Central-mode snapshot has only a global bool — asserting this stays a
-	// hard deny for mutating tools regardless of the local downgrade-gate.
+// TestSnapshotBudgetBranchDivergesFromLocal proves the central Evaluate path
+// (this file's own concern: does the LOCAL downgrade-gate — Engine.checkBudget
+// below, ExpensiveModels/runModel/nullAllowGate — stay untouched by this
+// phase) no longer hard-denies by default; it now asks a human instead, since
+// central has no per-run model to downgrade against. budget.mode: hard is the
+// only central path that still denies outright.
+func TestSnapshotBudgetBranchDivergesFromLocal(t *testing.T) {
 	snap := &PolicySnapshot{BudgetExceeded: true}
-	if d := snap.Evaluate(ToolCall{ToolName: "Bash", Command: "ls"}); d.Verdict != Deny {
-		t.Errorf("central budget-exceeded Bash must still hard-deny: %s", d.Verdict)
+	if d, action := snap.Evaluate(ToolCall{ToolName: "Bash", Command: "ls"}); d.Verdict != Ask {
+		t.Errorf("central budget-exceeded Bash, default mode: %s, want Ask", d.Verdict)
+	} else if action != ActionPermissionAsk {
+		t.Errorf("budget ask action = %q, want %q", action, ActionPermissionAsk)
 	}
-	if d := snap.Evaluate(ToolCall{ToolName: "Write", Paths: []string{"/x"}}); d.Verdict != Deny {
-		t.Errorf("central budget-exceeded Write must still hard-deny: %s", d.Verdict)
+	if d, _ := snap.Evaluate(ToolCall{ToolName: "Write", Paths: []string{"/x"}}); d.Verdict != Ask {
+		t.Errorf("central budget-exceeded Write, default mode: %s, want Ask", d.Verdict)
 	}
-	if d := snap.Evaluate(ToolCall{ToolName: "Read"}); d.Verdict != Allow {
+	if d, action := snap.Evaluate(ToolCall{ToolName: "Read"}); d.Verdict != Allow {
 		t.Errorf("central budget-exceeded Read must still allow: %s", d.Verdict)
+	} else if action != "" {
+		t.Errorf("Allow must carry no action, got %q", action)
+	}
+
+	hardSnap := &PolicySnapshot{BudgetExceeded: true, BudgetMode: "hard"}
+	if d, action := hardSnap.Evaluate(ToolCall{ToolName: "Bash", Command: "ls"}); d.Verdict != Deny {
+		t.Errorf("central budget-exceeded Bash, hard mode: %s, want Deny", d.Verdict)
+	} else if action != ActionBudgetBlock {
+		t.Errorf("budget deny action = %q, want %q", action, ActionBudgetBlock)
 	}
 }
 

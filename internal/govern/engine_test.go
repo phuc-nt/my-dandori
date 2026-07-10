@@ -214,12 +214,12 @@ func TestAuditChainVerify(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if broken, _ := Verify(e.St); broken != 0 {
-		t.Fatalf("fresh chain must verify, broken at %d", broken)
+	if broken, reason, _ := Verify(e.St); reason != "" {
+		t.Fatalf("fresh chain must verify, broken at %d reason=%q", broken, reason)
 	}
 	// Tamper with entry 2 → chain must break there.
 	e.St.DB.Exec(`UPDATE audit_log SET detail = 'forged' WHERE id = 2`)
-	if broken, _ := Verify(e.St); broken != 2 {
-		t.Errorf("tampered chain: broken at %d, want 2", broken)
+	if broken, reason, _ := Verify(e.St); broken != 2 || reason != "chain" {
+		t.Errorf("tampered chain: broken at %d reason=%q, want 2/chain", broken, reason)
 	}
 }

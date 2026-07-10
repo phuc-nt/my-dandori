@@ -1,9 +1,10 @@
 package govern
 
 import (
-	"fmt"
+	"database/sql"
 	"time"
 
+	"github.com/phuc-nt/dandori/internal/config"
 	"github.com/phuc-nt/dandori/internal/store"
 )
 
@@ -17,8 +18,38 @@ type PolicySnapshot struct {
 	KillGlobal     bool              `json:"kill_global"`
 	KilledRuns     []string          `json:"killed_runs"`
 	BudgetExceeded bool              `json:"budget_exceeded"`
-	Rules          []SnapshotRule    `json:"rules"`
-	Bands          map[string]string `json:"bands"`
+	// BudgetMode mirrors config.Budget.Mode's resolved value at snapshot-build
+	// time (""/"downgrade" or "hard") — Evaluate reads this instead of config,
+	// same offline-only posture as RiskMode/RiskThreshold above.
+	BudgetMode string `json:"budget_mode"`
+	// BudgetExceededAgents/BudgetExceededProjects extend BudgetExceeded (global
+	// only) to the agent/project scopes actually in play for THIS operator's
+	// active runs — see populateBudgetExceeded. A tool call's own AgentID or
+	// Project being in one of these sets means that scope, not just global, is
+	// over its monthly limit. Kept as slices (not a bool-per-run map) because
+	// budget scopes are agent/project identity, the same identity Evaluate
+	// already has on hand via tc.AgentID/tc.Project — no run-id indirection
+	// needed, unlike RiskScores which is inherently per-run.
+	BudgetExceededAgents   []string          `json:"budget_exceeded_agents"`
+	BudgetExceededProjects []string          `json:"budget_exceeded_projects"`
+	Rules                  []SnapshotRule    `json:"rules"`
+	Bands                  map[string]string `json:"bands"`
+	// RiskScores is G5's server-computed score per run-id, precomputed here
+	// (not queried live by Evaluate — see the Evaluate doc comment on why
+	// that invariant matters). Scoped to THIS snapshot's operator: only runs
+	// owned by the operator the snapshot was built for are present (see
+	// BuildPolicySnapshot's operatorID param) — a snapshot never leaks
+	// another operator's run ids/scores. Bounded to active runs started in
+	// the last 24h (mirrors KilledRuns) so an abandoned/zombie run does not
+	// grow this map forever.
+	RiskScores map[string]int `json:"risk_scores"`
+	// RiskThreshold/RiskMode/RiskGuardedTools mirror config.RiskScore's
+	// resolved (default-applied) values at snapshot-build time, so Evaluate
+	// can apply G5 purely from snapshot fields — no config access needed
+	// offline either.
+	RiskThreshold    int      `json:"risk_threshold"`
+	RiskMode         string   `json:"risk_mode"`
+	RiskGuardedTools []string `json:"risk_guarded_tools"`
 }
 
 type SnapshotRule struct {
@@ -31,9 +62,26 @@ type SnapshotRule struct {
 	ScopeID     string `json:"scope_id"`
 }
 
-// BuildPolicySnapshot assembles the snapshot from the store (read pool).
-func BuildPolicySnapshot(st *store.Store, monthlyBudget float64) (*PolicySnapshot, error) {
-	p := &PolicySnapshot{FetchedAt: store.Now(), Bands: map[string]string{}}
+// BuildPolicySnapshot assembles the snapshot from the store (read pool),
+// scoped to operatorID: the RiskScores map only ever contains runs owned by
+// this operator (leak fix — a snapshot pulled by operator B's token must
+// never contain operator A's run ids/scores). An empty operatorID means
+// local/no-central mode, where there is only one operator by construction —
+// all runs are included (backward compatible, not a multi-tenant scope).
+// riskCfg supplies G5's resolved config (threshold/mode/guarded tools/points)
+// so the returned snapshot carries everything Evaluate needs without a config
+// lookup of its own. budgetCfg supplies G3's resolved config (global limit +
+// Mode) for the same reason — see populateBudgetExceeded.
+func BuildPolicySnapshot(st *store.Store, budgetCfg config.Budget, operatorID string, riskCfg config.RiskScore) (*PolicySnapshot, error) {
+	p := &PolicySnapshot{
+		FetchedAt:        store.Now(),
+		Bands:            map[string]string{},
+		RiskScores:       map[string]int{},
+		BudgetMode:       budgetCfg.Mode,
+		RiskThreshold:    riskCfg.ThresholdValue(),
+		RiskMode:         riskCfg.Mode,
+		RiskGuardedTools: riskCfg.GuardedToolsValue(),
+	}
 	var kill string
 	_ = st.Read().QueryRow(`SELECT value FROM settings WHERE key = 'kill_switch_global'`).Scan(&kill)
 	p.KillGlobal = kill == "1"
@@ -53,10 +101,9 @@ func BuildPolicySnapshot(st *store.Store, monthlyBudget float64) (*PolicySnapsho
 	}
 	rows.Close()
 
-	var spent float64
-	_ = st.Read().QueryRow(`SELECT COALESCE(SUM(cost_usd),0) FROM runs
-		WHERE started_at >= strftime('%Y-%m-01T00:00:00Z','now')`).Scan(&spent)
-	p.BudgetExceeded = monthlyBudget > 0 && spent >= monthlyBudget
+	if err := populateBudgetExceeded(st, p, operatorID, budgetCfg); err != nil {
+		return nil, err
+	}
 
 	rrows, err := st.Read().Query(`SELECT id, kind, pattern, COALESCE(description,''), critical, scope_type, scope_id
 		FROM guardrail_rules WHERE enabled = 1 ORDER BY id`)
@@ -85,126 +132,69 @@ func BuildPolicySnapshot(st *store.Store, monthlyBudget float64) (*PolicySnapsho
 		}
 		p.Bands[a] = b
 	}
+
+	if err := populateRiskScores(st, p, operatorID, riskCfg); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
-// Evaluate mirrors Engine.Evaluate's fixed order against the snapshot:
-// kill → block → budget → gate/band. Same contract, evaluated offline.
-// Bad rule patterns fail CLOSED like the engine does.
-//
-// G5 (risk score, internal/govern/risk.go) is intentionally ABSENT here and
-// must stay that way: it needs local `events` + `audit_log` history and the
-// findOrCreateApproval/waitDecision machinery, none of which exist on the
-// offline snapshot path. Do not add a DB query here to "helpfully" support
-// it — see TestSnapshotEvaluateHasNoRiskBranch.
-func (p *PolicySnapshot) Evaluate(tc ToolCall) Decision {
-	if p.KillGlobal {
-		return Decision{Deny, "[dandori kill] global kill switch is ON — all agent tool calls are blocked"}
+// populateRiskScores fills p.RiskScores with the G5 score of every active,
+// non-zombie run in scope, on the read pool (contention fix — this must never
+// contend with the single ingest writer). "Active" mirrors KilledRuns' own
+// 24h bound: status='running' AND started_at > now-24h, so an abandoned run
+// that never finalized (no reaper exists yet) does not grow this map forever.
+// When operatorID is non-empty, only runs owned by that operator are scored
+// (leak fix); empty operatorID (local mode) scores every active run.
+func populateRiskScores(st *store.Store, p *PolicySnapshot, operatorID string, riskCfg config.RiskScore) error {
+	cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
+	var rows *sql.Rows
+	var err error
+	if operatorID != "" {
+		rows, err = st.Read().Query(`SELECT id FROM runs
+			WHERE status = 'running' AND started_at > ? AND operator_id = ?`, cutoff, operatorID)
+	} else {
+		rows, err = st.Read().Query(`SELECT id FROM runs
+			WHERE status = 'running' AND started_at > ?`, cutoff)
 	}
-	for _, id := range p.KilledRuns {
-		if id == tc.RunID {
-			return Decision{Deny, "[dandori kill] this run was killed by an operator"}
-		}
-	}
-	for i := range p.Rules {
-		r := &p.Rules[i]
-		if r.Kind != "block" {
-			continue
-		}
-		hit, err := p.ruleMatches(r, tc)
-		if err != nil {
-			return Decision{Deny, "[dandori] internal error evaluating guardrails: " + err.Error()}
-		}
-		if hit {
-			return Decision{Deny, fmt.Sprintf("[dandori G1] blocked: %s (rule #%d)", r.Description, r.ID)}
-		}
-	}
-	// G1.5 secret-Deny (regex-only half of checkSecrets): a strict-secret
-	// pattern in Command/Content is denied here too, since it needs no DB
-	// lookup and central-mode pre-tool checks must not be weaker than local.
-	// The PII→gate half of G1.5 is LOCAL-ONLY: it needs findOrCreateApproval
-	// (a DB row + wait-for-human), which the snapshot has no access to on a
-	// dev machine evaluating offline. A PII-bearing call in central mode
-	// falls through to whatever gate/band rule would otherwise apply.
-	if hit, kind := snapshotSecretMatch(tc); hit {
-		return Decision{Deny, fmt.Sprintf("[dandori G1.5] %s detected — value withheld from logs/audit", kind)}
-	}
-	// Central mode is hard-stop ONLY — it never applies the local downgrade-gate
-	// (Budget.Mode, ExpensiveModels, per-run model, agent/project scoping).
-	// BudgetExceeded here is a single global bool computed server-side with no
-	// per-run model info and no DB to run runModel/nullAllowGate against, so
-	// there is nothing to downgrade against. A dev machine pulling this
-	// snapshot always hard-denies mutating tools once the org-wide budget is
-	// exhausted; the downgrade-gate only exists in Engine.checkBudget's local
-	// evaluation path (internal/govern/budget.go). This is intentional, not a
-	// TODO: closing it would require pushing per-run model + per-scope budgets
-	// into the snapshot payload, which is out of scope here.
-	if p.BudgetExceeded && (isEditTool(tc.ToolName) || tc.ToolName == "Bash") {
-		return Decision{Deny, "[dandori G3] monthly budget exhausted — mutating tool calls are blocked until the budget is raised"}
-	}
-	band := p.Bands[tc.AgentID]
-	if band == "" {
-		band = BandGated
-	}
-	for i := range p.Rules {
-		r := &p.Rules[i]
-		if r.Kind != "gate" {
-			continue
-		}
-		if band == BandTrusted && !r.Critical {
-			continue
-		}
-		hit, err := p.ruleMatches(r, tc)
-		if err != nil {
-			return Decision{Deny, "[dandori] internal error evaluating guardrails: " + err.Error()}
-		}
-		if hit {
-			return Decision{Ask, fmt.Sprintf("[dandori G4] %s (rule #%d) — cần người duyệt tại máy này", r.Description, r.ID)}
-		}
-	}
-	if band == BandSupervised && (isEditTool(tc.ToolName) || tc.ToolName == "Bash") {
-		return Decision{Ask, "[dandori G4] supervised band: edits and shell commands require approval"}
-	}
-	return Decision{Verdict: Allow}
-}
-
-func (p *PolicySnapshot) ruleMatches(r *SnapshotRule, tc ToolCall) (bool, error) {
-	if r.ScopeType == "agent" && r.ScopeID != tc.AgentID {
-		return false, nil
-	}
-	if r.ScopeType == "project" && r.ScopeID != tc.Project {
-		return false, nil
-	}
-	re, err := compileCached(r.Pattern)
 	if err != nil {
-		return false, fmt.Errorf("rule #%d bad pattern: %w", r.ID, err)
+		return err
 	}
-	if tc.Command != "" && re.MatchString(tc.Command) {
-		return true, nil
-	}
-	for _, pth := range tc.Paths {
-		if re.MatchString(pth) {
-			return true, nil
+	var runIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
 		}
+		runIDs = append(runIDs, id)
 	}
-	return false, nil
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, id := range runIDs {
+		// countDenials=false: these are central runs, and their audit_log
+		// denial rows are client-attested (see RiskScoreCentral's doc
+		// comment) — zero-weighted here for the same anti-poison reason.
+		score, err := riskScoreOn(st.Read(), riskCfg.WindowNValue(), riskCfg.ToolPointsValue(),
+			riskCfg.DenialPointsValue(), id, false)
+		if err != nil {
+			// One run's scoring error must not fail the whole snapshot build
+			// (fail-open on OBSERVATION, same posture as checkRisk's log-mode
+			// query-error path) — that run is simply absent from RiskScores,
+			// which Evaluate treats as score 0 (never gates).
+			continue
+		}
+		p.RiskScores[id] = score
+	}
+	return nil
 }
 
 // MutatingTool reports whether a tool can change state — the set the narrow
 // fail-closed path denies when NO policy is available at all.
 func MutatingTool(name string) bool {
 	return isEditTool(name) || name == "Bash"
-}
-
-// snapshotSecretMatch runs the same strict-secret/Bearer check checkSecrets
-// uses locally, scoped to Command+Content and capped the same way (scanCap,
-// head+tail) — kept as a plain function (no DB) so it is safe to call from
-// the snapshot's offline Evaluate.
-func snapshotSecretMatch(tc ToolCall) (bool, string) {
-	for _, window := range scanWindows(tc.Command, tc.Content) {
-		if kind, ok := secretKind(window); ok {
-			return true, kind
-		}
-	}
-	return false, ""
 }

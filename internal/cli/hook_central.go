@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+
 	"github.com/phuc-nt/dandori/internal/capture"
 	"github.com/phuc-nt/dandori/internal/config"
 	"github.com/phuc-nt/dandori/internal/govern"
@@ -76,6 +78,9 @@ func runHookCentral(cfg *config.Config, event string, in capture.HookInput) erro
 }
 
 // centralPreToolVerdict evaluates guardrails against the policy snapshot.
+// A Deny/Ask verdict additionally spools a guardrail-decision record so the
+// central server can create a co-signed audit_log row for it (Phase 4) —
+// today only local-mode Engine.Evaluate does that (engine.go's record()).
 func centralPreToolVerdict(c *ingest.Client, in capture.HookInput, agentID, project string) error {
 	tc := govern.ExtractToolCall(in.SessionID, agentID, project, in.CWD, in.ToolName, in.ToolInput)
 	snap := c.Policy()
@@ -88,5 +93,63 @@ func centralPreToolVerdict(c *ingest.Client, in capture.HookInput, agentID, proj
 		}
 		return nil
 	}
-	return printVerdict(snap.Evaluate(tc))
+	d, action := snap.Evaluate(tc)
+	switch action {
+	case "":
+		// Allow, nothing to record.
+	case govern.ActionRiskWouldGate:
+		// G5 log-mode observation only — NOT a central audit record (it is
+		// deliberately absent from govern.AuditActionSet: log mode never
+		// blocked anything, so there is no guardrail decision to co-sign).
+		// This mirrors local mode's emitRiskWouldGate, just written from the
+		// dev machine's own hook process instead of the engine.
+		emitRiskWouldGateCentral(c, in.SessionID, tc.ToolName, d.Reason)
+	default:
+		spoolGuardrailDecision(c, in.SessionID, tc.ToolName, action, d.Reason, snap.FetchedAt)
+	}
+	return printVerdict(d)
+}
+
+// emitRiskWouldGateCentral records the client-side twin of local mode's
+// emitRiskWouldGate: a risk_would_gate capture event, spooled through the
+// same best-effort capture path as every other central-mode event (fail-open
+// — a spool failure here must never affect the tool call's own verdict,
+// which centralPreToolVerdict already returned).
+func emitRiskWouldGateCentral(c *ingest.Client, sessionID, tool, reason string) {
+	rec := ingest.Record{
+		Type:      "event",
+		SessionID: sessionID,
+		ULID:      ingest.NewULID(),
+		Kind:      "risk_would_gate",
+		Tool:      tool,
+		Payload:   reason,
+		ClientTS:  store.Now(),
+	}
+	if err := c.AppendEvent(rec); err != nil {
+		logAndAllow(err)
+	}
+}
+
+// spoolGuardrailDecision records a Deny/Ask verdict for central audit. This
+// is capture-adjacent (best-effort, fail-open, contract.go's
+// capture-event-append mode) — a spool failure here must never turn into a
+// second verdict or block the hook; the printed verdict from Evaluate
+// already stands on its own.
+func spoolGuardrailDecision(c *ingest.Client, sessionID, tool, action, reason, fetchedAt string) {
+	host, _ := os.Hostname()
+	rec := ingest.Record{
+		Type:              "event",
+		SessionID:         sessionID,
+		ULID:              ingest.NewULID(),
+		Kind:              action,
+		Tool:              tool,
+		Payload:           reason,
+		ClientTS:          store.Now(),
+		Action:            action,
+		Machine:           host,
+		SnapshotFetchedAt: fetchedAt,
+	}
+	if err := c.AppendEvent(rec); err != nil {
+		logAndAllow(err)
+	}
 }

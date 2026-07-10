@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"sync"
+
+	"github.com/phuc-nt/dandori/internal/store"
 )
 
 // Rule is one guardrail row with its compiled pattern.
@@ -83,6 +85,39 @@ func (r *Rule) matches(tc ToolCall) bool {
 		}
 	}
 	return false
+}
+
+// MatchesEnabledBlockRule reports whether tc would trip an enabled block
+// rule right now — read-only, no audit/event side effects. This is what the
+// central-mode coverage detector (ingest/detector.go) uses to ask "should
+// this tool_use have produced a guardrail-decision event": it deliberately
+// reuses the SAME rule table + matching code checkBlockRules uses, not a
+// second reimplementation, so the detector's notion of "matches a block
+// rule" can never silently drift from what Evaluate itself would have hit.
+func MatchesEnabledBlockRule(st *store.Store, tc ToolCall) (bool, error) {
+	rows, err := st.Read().Query(`SELECT id, kind, pattern, COALESCE(description,''), critical, scope_type, scope_id
+		FROM guardrail_rules WHERE enabled = 1 AND kind = 'block' ORDER BY id`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r Rule
+		var crit int
+		if err := rows.Scan(&r.ID, &r.Kind, &r.Pattern, &r.Description, &crit, &r.ScopeType, &r.ScopeID); err != nil {
+			return false, err
+		}
+		r.Critical = crit == 1
+		re, err := compileCached(r.Pattern)
+		if err != nil {
+			continue // a broken pattern is Evaluate's problem (fails closed there); detector just skips it
+		}
+		r.re = re
+		if r.appliesTo(tc) && r.matches(tc) {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 // checkBlockRules denies on the first matching block rule (G1).

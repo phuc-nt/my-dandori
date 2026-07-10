@@ -35,13 +35,14 @@ const operatorIDCtxKey ctxKey = 0
 // console (red-team C1/C2): routable bind, bearer-token auth on every route,
 // and NO console routes — the unauthenticated console stays on 127.0.0.1.
 type Server struct {
-	Cfg *config.Config
-	St  *store.Store
-	sem chan struct{} // bounded in-flight requests (goroutine pile-up guard)
+	Cfg         *config.Config
+	St          *store.Store
+	sem         chan struct{} // bounded in-flight requests (goroutine pile-up guard)
+	policyCache *policySnapshotCache
 }
 
 func NewServer(cfg *config.Config, st *store.Store) *Server {
-	return &Server{Cfg: cfg, St: st, sem: make(chan struct{}, 8)}
+	return &Server{Cfg: cfg, St: st, sem: make(chan struct{}, 8), policyCache: newPolicySnapshotCache()}
 }
 
 // ListenAndServe blocks serving the ingest API on cfg.IngestListen.
@@ -62,6 +63,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /ingest/events", s.handleEvents)
 	mux.HandleFunc("GET /ingest/policy", s.handlePolicy)
 	mux.HandleFunc("GET /ingest/context", s.handleContext)
+	mux.HandleFunc("GET /ingest/audit-pubkey", s.handleAuditPubkey)
+	mux.HandleFunc("GET /ingest/skill/{unit}", s.handleFetchSkill)
+	mux.HandleFunc("GET /ingest/kit/{unit}", s.handleFetchKit)
 	return s.auth(mux)
 }
 
@@ -165,9 +169,17 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]int{"applied": applied})
 }
 
-// handlePolicy serves the governance snapshot for local pre-tool evaluation.
+// handlePolicy serves the governance snapshot for local pre-tool evaluation,
+// scoped to the authenticated operator (operatorIDFromContext — never a
+// client-supplied header, same H1 posture as handleEvents) so operator B can
+// never see operator A's run ids/risk scores. Server-cached (policyCache) so
+// concurrent pollers from a whole fleet don't each force a fresh RiskScore
+// computation over every active run on every request.
 func (s *Server) handlePolicy(w http.ResponseWriter, r *http.Request) {
-	snap, err := govern.BuildPolicySnapshot(s.St, s.Cfg.Budget.GlobalMonthlyUSD)
+	operatorID := operatorIDFromContext(r.Context())
+	snap, err := s.policyCache.get(operatorID, func() (*govern.PolicySnapshot, error) {
+		return govern.BuildPolicySnapshot(s.St, s.Cfg.Budget, operatorID, s.Cfg.RiskScore)
+	})
 	if err != nil {
 		http.Error(w, "internal", http.StatusInternalServerError)
 		return
@@ -190,4 +202,22 @@ func (s *Server) handleContext(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"context": text, "provenance": prov})
+}
+
+// handleAuditPubkey serves the server's audit signing public key so a
+// remote verifier (a distribution-side check, or an auditor's own tooling)
+// can validate row/checkpoint signatures without ever touching the private
+// key. A 404 means the server has no signing key configured (unsigned
+// mode) — that is a legitimate state, not an error, so it is not a 500.
+func (s *Server) handleAuditPubkey(w http.ResponseWriter, r *http.Request) {
+	pubB64, ok := govern.PublicKeyFromSigningKey()
+	if !ok {
+		http.Error(w, "no audit signing key configured on this server", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"key_id":     govern.DefaultKeyID,
+		"public_key": pubB64,
+	})
 }

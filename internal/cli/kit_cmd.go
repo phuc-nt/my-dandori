@@ -14,18 +14,21 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/phuc-nt/dandori/internal/config"
 	"github.com/phuc-nt/dandori/internal/contexthub"
 	"github.com/phuc-nt/dandori/internal/govern"
+	"github.com/phuc-nt/dandori/internal/ingest"
 	"github.com/phuc-nt/dandori/internal/kitpolicy"
 	"github.com/phuc-nt/dandori/internal/learn"
 	"github.com/phuc-nt/dandori/internal/skillreg"
+	"github.com/phuc-nt/dandori/internal/store"
 )
 
-// kitCmd is the nominate-only distribution surface for kind=kit knowledge
-// units (P4). Unlike skillCmd (pull-only, P5), kit nominate is the WRITE
-// side: it scans this repo's git-tracked .claude/ tree and proposes a new
-// kit for review. Pull (kit's own equivalent of skillCmd's pull) is P5's
-// responsibility, built on the same internal/kitpolicy this command uses.
+// kitCmd is nominate (P4, write side: scans this repo's git-tracked
+// .claude/ tree and proposes a new kit for review) plus pull (P5, read
+// side): local store first, falling back to a verified central-server fetch
+// (central_pull.go) when not published locally and central mode is
+// configured.
 var kitCmd = &cobra.Command{
 	Use:   "kit",
 	Short: "Nominate a kit (bundle of git-tracked .claude/ files) for review",
@@ -334,7 +337,9 @@ type kitPullPlan struct {
 // verify -> per-file KitLocalPath -> classify -> summary -> ONE confirm ->
 // write all -> adoption -> audit. Any failure before the confirm prompt
 // aborts with nothing written; any failure of KitLocalPath itself also
-// aborts before the confirm prompt is even shown.
+// aborts before the confirm prompt is even shown. Not published in this
+// machine's local store AND central mode configured -> fetched and
+// independently verified from the central server instead (central_pull.go).
 func runKitPull(cmd *cobra.Command, args []string) error {
 	cfg, st, err := openStore()
 	if err != nil {
@@ -344,11 +349,18 @@ func runKitPull(cmd *cobra.Command, args []string) error {
 
 	k, err := skillreg.GetKit(st, args[0])
 	if err != nil {
-		if err == skillreg.ErrNotFound {
-			fmt.Fprintf(cmd.OutOrStdout(), "kit unit chưa published ở store này (central mode = [Sau]): %q\n", args[0])
+		if err != skillreg.ErrNotFound {
+			return err
+		}
+		if !ingest.Enabled(cfg) {
+			fmt.Fprintf(cmd.OutOrStdout(), "kit unit chưa published ở store này (không ở chế độ central — cấu hình server_url/token để pull từ máy khác): %q\n", args[0])
 			return nil
 		}
-		return err
+		central, cErr := centralPullKit(cfg, args[0])
+		if cErr != nil {
+			return cErr
+		}
+		return writeKitPull(cmd, cfg, st, central.Kit, central.Files, 0, false)
 	}
 
 	// F7-equivalent for kits: verify against the audit hash-chain, an
@@ -361,16 +373,29 @@ func runKitPull(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("huỷ toàn bộ pull — manifest thất bại xác thực 3 chiều: %w", err)
 	}
 
-	manifest, err := learn.ParseKitManifest(k.Body)
-	if err != nil {
-		return fmt.Errorf("huỷ toàn bộ pull — không parse được manifest: %w", err)
-	}
 	kitFiles, err := learn.KitFiles(st, k.UnitID)
 	if err != nil {
 		return err
 	}
+	return writeKitPull(cmd, cfg, st, *k, kitFiles, k.UnitID, true)
+}
+
+// writeKitPull is the shared manifest-parse/per-file-verify/confirm/write/
+// audit tail for both the local (isLocal=true, unitID is a real local row)
+// and central (isLocal=false, unitID unused) pull paths. By the time this
+// runs, k.Body has ALREADY passed its verification: the 3-way manifest check
+// for a local pull, or the byte-hash + anchor gate (ingest.VerifyKitFetch)
+// for a central one — this function only re-derives per-file plans, writes,
+// and records; the per-file body-hash check below is NOT redundant even for
+// a central pull, since it is what catches a manifest listing one file's
+// hash while a DIFFERENT file's bytes were actually served for that path.
+func writeKitPull(cmd *cobra.Command, cfg *config.Config, st *store.Store, k skillreg.Kit, kitFiles []learn.KitFileRow, unitID int64, isLocal bool) error {
+	manifest, err := learn.ParseKitManifest(k.Body)
+	if err != nil {
+		return fmt.Errorf("huỷ toàn bộ pull — không parse được manifest: %w", err)
+	}
 	if len(kitFiles) != len(manifest.Files) {
-		return fmt.Errorf("huỷ toàn bộ pull — manifest có %d file nhưng knowledge_kit_files có %d file (không đồng bộ)",
+		return fmt.Errorf("huỷ toàn bộ pull — manifest có %d file nhưng file nhận được có %d file (không đồng bộ)",
 			len(manifest.Files), len(kitFiles))
 	}
 
@@ -385,7 +410,7 @@ func runKitPull(cmd *cobra.Command, args []string) error {
 	for _, f := range kitFiles {
 		mf, ok := manifest.FileByPath(f.Path)
 		if !ok {
-			return fmt.Errorf("huỷ toàn bộ pull — file %q có trong knowledge_kit_files nhưng không có trong manifest", f.Path)
+			return fmt.Errorf("huỷ toàn bộ pull — file %q có trong dữ liệu nhận được nhưng không có trong manifest", f.Path)
 		}
 		sum := sha256.Sum256([]byte(f.Body))
 		bodyHash := hex.EncodeToString(sum[:])
@@ -431,13 +456,22 @@ func runKitPull(cmd *cobra.Command, args []string) error {
 	}
 
 	operator := cfg.UserName
-	if _, err := learn.RecordUnitAdoption(st, k.UnitID, operator, "", true, cfg.LearnWindowDays); err != nil {
-		return fmt.Errorf("write succeeded but RecordUnitAdoption failed: %w", err)
-	}
-	a := &govern.Audit{St: st, Actor: operator}
-	detail := fmt.Sprintf("unit_id=%d name=%s hash=%s actor=%s files=%d", k.UnitID, k.Name, k.Hash, operator, len(plans))
-	if _, err := a.Append("kit_pulled", "kit:"+k.Name, detail); err != nil {
-		return fmt.Errorf("write succeeded but audit append failed: %w", err)
+	detail := fmt.Sprintf("name=%s hash=%s actor=%s files=%d", k.Name, k.Hash, operator, len(plans))
+	if isLocal {
+		// RecordUnitAdoption/audit both key off the LOCAL unit_id — a
+		// central pull has no local knowledge_units row to attach to (see
+		// central_pull.go's file doc comment), so both are local-only.
+		if _, err := learn.RecordUnitAdoption(st, unitID, operator, "", true, cfg.LearnWindowDays); err != nil {
+			return fmt.Errorf("write succeeded but RecordUnitAdoption failed: %w", err)
+		}
+		a := &govern.Audit{St: st, Actor: operator}
+		if _, err := a.Append("kit_pulled", "kit:"+k.Name, fmt.Sprintf("unit_id=%d %s", unitID, detail)); err != nil {
+			return fmt.Errorf("write succeeded but audit append failed: %w", err)
+		}
+	} else {
+		if err := centralAuditFallback(st, operator, "kit_pulled", "kit:"+k.Name, detail); err != nil {
+			return fmt.Errorf("write succeeded but audit append failed: %w", err)
+		}
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "pulled kit %q — %d file ghi vào %s\n", k.Name, len(plans), repoRoot)

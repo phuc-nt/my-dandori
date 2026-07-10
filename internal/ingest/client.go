@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -94,6 +95,54 @@ func (c *Client) FlushThrottled() {
 	}
 	_ = os.WriteFile(marker, nil, 0o600)
 	_ = c.Flush()
+}
+
+// FetchSkill GETs the raw, not-yet-verified skill fetch response for name (a
+// skill name or numeric unit id — same key shape skillreg.Get accepts). The
+// caller (internal/cli's central pull path) MUST run VerifyAnchoredSkill
+// (skill_kit_anchor.go) on the result before trusting Body or writing
+// anything — this method itself performs no verification, it only moves
+// bytes over the wire.
+func (c *Client) FetchSkill(name string) (*skillFetchResponse, error) {
+	var out skillFetchResponse
+	if err := c.getJSON("/ingest/skill/"+url.PathEscape(name), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// FetchKit is FetchSkill's kit counterpart.
+func (c *Client) FetchKit(name string) (*kitFetchResponse, error) {
+	var out kitFetchResponse
+	if err := c.getJSON("/ingest/kit/"+url.PathEscape(name), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// getJSON is the shared GET+decode helper FetchSkill/FetchKit use — mirrors
+// fetchContext's request shape (Bearer auth via authorize(), same *http.Client)
+// but surfaces errors instead of returning nil, since a failed skill/kit pull
+// must abort with a clear message rather than silently falling back (unlike
+// Context()'s stale-cache-is-fine posture).
+func (c *Client) getJSON(path string, out any) error {
+	req, err := http.NewRequest(http.MethodGet, c.cfg.ServerURL+path, nil)
+	if err != nil {
+		return err
+	}
+	c.authorize(req)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("ingest: request %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("ingest: %s returned %s", path, resp.Status)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("ingest: decode %s response: %w", path, err)
+	}
+	return nil
 }
 
 func (c *Client) post(recs []Record) error {

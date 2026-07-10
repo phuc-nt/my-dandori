@@ -40,8 +40,8 @@ func TestAuditChainMixedActorNamespaces(t *testing.T) {
 		ids = append(ids, id)
 	}
 
-	if broken, err := Verify(st); err != nil || broken != 0 {
-		t.Fatalf("chain broken at %d (err %v), want intact across mixed actor namespaces", broken, err)
+	if broken, reason, err := Verify(st); err != nil || reason != "" {
+		t.Fatalf("chain broken at %d reason=%q (err %v), want intact across mixed actor namespaces", broken, reason, err)
 	}
 
 	// Tamper the third entry's detail (slack: namespace) — Verify must report
@@ -50,11 +50,11 @@ func TestAuditChainMixedActorNamespaces(t *testing.T) {
 	if _, err := st.DB.Exec(`UPDATE audit_log SET detail = 'tampered' WHERE id = ?`, tamperID); err != nil {
 		t.Fatal(err)
 	}
-	broken, err := Verify(st)
+	broken, reason, err := Verify(st)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if broken != tamperID {
-		t.Errorf("Verify reported broken id %d, want %d (the tampered slack: entry)", broken, tamperID)
+	if broken != tamperID || reason != "chain" {
+		t.Errorf("Verify reported broken id %d reason=%q, want %d reason=chain", broken, reason, tamperID)
 	}
 }

@@ -138,6 +138,10 @@ func TestE2EKitFullLoopNominatePullAcrossTwoRepos(t *testing.T) {
 	db := tempDB(t)
 	t.Cleanup(resetKitFlags)
 	t.Cleanup(resetKitPullFlags)
+	// This test builds its own audit chain in a fresh temp-DB store, so it
+	// must not read the git-tracked default docs/audit-checkpoints/ (which
+	// belongs to a completely different chain) when govern.Verify runs below.
+	t.Setenv("DANDORI_AUDIT_CHECKPOINT_DIR", t.TempDir())
 
 	repoA := t.TempDir()
 	runGit(t, repoA, "init", "-q")
@@ -219,8 +223,8 @@ func TestE2EKitFullLoopNominatePullAcrossTwoRepos(t *testing.T) {
 	if auditCount != 1 {
 		t.Errorf("expected 1 kit_pulled audit row, got %d", auditCount)
 	}
-	if n, err := govern.Verify(st2); err != nil {
-		t.Errorf("audit chain verify failed after full loop: %v (at #%d)", err, n)
+	if n, reason, err := govern.Verify(st2); err != nil || reason != "" {
+		t.Errorf("audit chain verify failed after full loop: %v (at #%d reason=%q)", err, n, reason)
 	}
 }
 

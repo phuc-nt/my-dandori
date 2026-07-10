@@ -6,6 +6,13 @@
 # Local agent runtime data (audit, dedup, approvals, checkpoints)
 .data/
 
+# Checkpoint sink written under the process CWD when
+# DANDORI_AUDIT_CHECKPOINT_DIR is unset (relative default) — real checkpoints
+# belong only at the repo root's docs/audit-checkpoints/; a copy nested under
+# internal/<pkg>/docs/ is test-run pollution from running `go test` with CWD
+# inside that package, never intentional content.
+internal/*/docs/audit-checkpoints/
+
 # Python
 .venv/
 __pycache__/

@@ -171,28 +171,43 @@ var approveUnitIDRe = regexp.MustCompile(`unit_id=(\d+)`)
 // anchor (e.g. a signed head or an external log) — the DB itself is no longer
 // a trust boundary once it's remote-writable by more than one operator.
 func ApproveHash(st *store.Store, unitID int64) (string, error) {
+	hash, _, err := ApproveHashRow(st, unitID)
+	return hash, err
+}
+
+// ApproveHashRow is ApproveHash's central-mode (P5) counterpart: it also
+// returns the audit_log row id the approve-hash was read from, so a caller
+// building a network-servable anchor (the ingest server's skill/kit
+// endpoints) can tell a remote verifier which chain position to check
+// against a signed checkpoint (Checkpoint.TipID) — a checkpoint whose tip is
+// BEHIND this row proves nothing about it. ApproveHash itself keeps its
+// original (string, error) signature since it already has call sites across
+// cli/web/skillreg that only ever needed the hash.
+func ApproveHashRow(st *store.Store, unitID int64) (hash string, rowID int64, err error) {
 	u, err := learn.GetUnit(st, unitID)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	if u == nil {
-		return "", fmt.Errorf("unit %d not found", unitID)
+		return "", 0, fmt.Errorf("unit %d not found", unitID)
 	}
 	subject := u.Kind + ":" + u.Name
 	rows, err := st.Read().Query(
-		`SELECT COALESCE(detail,'') FROM audit_log WHERE action = ? AND subject = ? ORDER BY id DESC`,
+		`SELECT id, COALESCE(detail,'') FROM audit_log WHERE action = ? AND subject = ? ORDER BY id DESC`,
 		"knowledge_published", subject)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	defer rows.Close()
 
 	var newestHash string // first (newest) row with a content_hash at all — pre-fix fallback
+	var newestHashID int64
 	haveNewestHash := false
 	for rows.Next() {
+		var id int64
 		var detail string
-		if err := rows.Scan(&detail); err != nil {
-			return "", err
+		if err := rows.Scan(&id, &detail); err != nil {
+			return "", 0, err
 		}
 		hm := approveHashRe.FindStringSubmatch(detail)
 		if hm == nil {
@@ -200,6 +215,7 @@ func ApproveHash(st *store.Store, unitID int64) (string, error) {
 		}
 		if !haveNewestHash {
 			newestHash = hm[1]
+			newestHashID = id
 			haveNewestHash = true
 		}
 		if idm := approveUnitIDRe.FindStringSubmatch(detail); idm != nil {
@@ -209,12 +225,12 @@ func ApproveHash(st *store.Store, unitID int64) (string, error) {
 				// stop scanning (never fall through to an older entry even if
 				// it also matches, since this unit id can only ever have one
 				// publish record and rows are walked newest-first).
-				return hm[1], nil
+				return hm[1], id, nil
 			}
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return "", err
+		return "", 0, err
 	}
 	if haveNewestHash {
 		// No entry carried a unit_id matching unitID (either this unit
@@ -222,9 +238,9 @@ func ApproveHash(st *store.Store, unitID int64) (string, error) {
 		// fall back to the newest entry overall for this name, never an older
 		// one, so a pre-fix lineage still gets "latest is authoritative"
 		// rather than "first hash that happens to match."
-		return newestHash, nil
+		return newestHash, newestHashID, nil
 	}
-	return "", fmt.Errorf("no knowledge_published audit entry found for skill %q (unit %d)", u.Name, unitID)
+	return "", 0, fmt.Errorf("no knowledge_published audit entry found for skill %q (unit %d)", u.Name, unitID)
 }
 
 // Verify performs the F7 three-way hash check: sha256(s.Body) == s.Hash ==

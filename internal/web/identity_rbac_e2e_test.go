@@ -316,12 +316,12 @@ func TestE2E17_18_AuditVerifyAcrossConsoleBoundary(t *testing.T) {
 		t.Fatalf("admin POST /budgets = 403, want allowed")
 	}
 
-	broken, err := govern.Verify(s.Store)
+	broken, reason, err := govern.Verify(s.Store)
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
-	if broken != 0 {
-		t.Fatalf("Verify() across @console + real-principal boundary = broken at %d, want 0 (intact)", broken)
+	if reason != "" {
+		t.Fatalf("Verify() across @console + real-principal boundary = broken at %d reason=%q, want intact", broken, reason)
 	}
 
 	var tamperID int64
@@ -329,12 +329,12 @@ func TestE2E17_18_AuditVerifyAcrossConsoleBoundary(t *testing.T) {
 	if _, err := s.Store.DB.Exec(`UPDATE audit_log SET detail = 'tampered' WHERE id = ?`, tamperID); err != nil {
 		t.Fatalf("tamper: %v", err)
 	}
-	broken, err = govern.Verify(s.Store)
+	broken, reason, err = govern.Verify(s.Store)
 	if err != nil {
 		t.Fatalf("Verify after tamper: %v", err)
 	}
-	if broken != tamperID {
-		t.Errorf("Verify() after tamper reported id %d, want %d", broken, tamperID)
+	if broken != tamperID || reason != "chain" {
+		t.Errorf("Verify() after tamper reported id %d reason=%q, want %d/chain", broken, reason, tamperID)
 	}
 }
 

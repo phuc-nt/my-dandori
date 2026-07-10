@@ -25,12 +25,12 @@ var auditCmd = &cobra.Command{
 			sub = args[0]
 		}
 		if sub == "verify" {
-			broken, err := govern.Verify(st)
+			broken, reason, err := govern.Verify(st)
 			if err != nil {
 				return err
 			}
-			if broken != 0 {
-				return fmt.Errorf("audit chain BROKEN at entry #%d — records were modified", broken)
+			if reason != "" {
+				return fmt.Errorf("audit chain BROKEN at entry #%d (%s) — %s", broken, reason, verifyReasonHint(reason))
 			}
 			fmt.Println("audit chain OK")
 			return nil
@@ -56,6 +56,22 @@ var auditCmd = &cobra.Command{
 		}
 		return w.Flush()
 	},
+}
+
+// verifyReasonHint gives an operator a plain-language pointer for each
+// Verify failure reason — the reason string itself is the stable contract
+// (also used in VerifyResult JSON), this is just CLI-facing prose.
+func verifyReasonHint(reason string) string {
+	switch reason {
+	case "chain":
+		return "a row's content or hash was edited in place"
+	case "signature":
+		return "a row's signature doesn't match its content, or an unsigned row appears after signing was enabled (possible rebuild)"
+	case "truncated":
+		return "the chain is shorter than, or diverges from, the latest signed checkpoint — rows were likely deleted"
+	default:
+		return "unknown"
+	}
 }
 
 func init() {

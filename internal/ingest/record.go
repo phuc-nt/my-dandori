@@ -28,6 +28,18 @@ type Record struct {
 	Payload  string `json:"payload,omitempty"` // redacted client-side before spool/POST
 	ClientTS string `json:"client_ts,omitempty"`
 
+	// Guardrail-decision records only (Kind is one of govern.AuditActionSet):
+	// a Deny/Ask verdict the dev machine's offline PolicySnapshot.Evaluate
+	// produced. Action echoes the SAME discriminator Evaluate returned — the
+	// server whitelists it against govern.AuditActionSet rather than trusting
+	// it verbatim (a client cannot make up an action string that lands
+	// directly in audit_log). Machine + SnapshotFetchedAt are informational:
+	// the server folds them into the audit detail and uses FetchedAt for the
+	// stale-snapshot freshness flag (they are never used for access control).
+	Action            string `json:"action,omitempty"`
+	Machine           string `json:"machine,omitempty"`
+	SnapshotFetchedAt string `json:"snapshot_fetched_at,omitempty"`
+
 	// Type == finalize
 	Finalize *RunFinalize `json:"finalize,omitempty"`
 }

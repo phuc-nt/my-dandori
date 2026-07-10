@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/phuc-nt/dandori/internal/capture"
+	"github.com/phuc-nt/dandori/internal/govern"
 	"github.com/phuc-nt/dandori/internal/redact"
 	"github.com/phuc-nt/dandori/internal/store"
 )
@@ -15,12 +16,20 @@ import (
 // the client ULID so spool replays count exactly once. Event ts is the
 // client's clock (analytics follow the machine where work happened); audit
 // entries elsewhere keep server time.
+//
+// Guardrail-decision records (rec.Action set, see record.go) additionally
+// get a co-signed audit_log row via govern.AppendTx — called with THIS
+// batch's tx, never a new Begin, so it cannot deadlock against the
+// single-connection write pool (store.Open's SetMaxOpenConns(1)): a second
+// Begin from the same process would block forever waiting for a connection
+// this same call already holds.
 func (s *Server) applyBatch(operatorID string, recs []Record) (int, error) {
 	tx, err := s.St.DB.Begin()
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
+	audit := &govern.Audit{St: s.St, Actor: operatorID}
 	applied := 0
 	for i := range recs {
 		rec := &recs[i]
@@ -52,6 +61,11 @@ func (s *Server) applyBatch(operatorID string, recs []Record) (int, error) {
 			if n, _ := res.RowsAffected(); n == 1 {
 				applied++
 			}
+			if rec.Action != "" {
+				if err := applyGuardrailAuditTx(tx, audit, operatorID, rec); err != nil {
+					return 0, err
+				}
+			}
 		case "finalize":
 			if rec.Finalize == nil {
 				continue
@@ -71,6 +85,7 @@ func (s *Server) applyBatch(operatorID string, recs []Record) (int, error) {
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
+	detectCoverageGaps(s.St, recs)
 	return applied, nil
 }
 

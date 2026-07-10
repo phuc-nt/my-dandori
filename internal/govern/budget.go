@@ -1,6 +1,7 @@
 package govern
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -11,35 +12,56 @@ import (
 // SpendMonth sums run cost for the current calendar month within a scope.
 // scopeType: global | agent | project (scopeID empty for global).
 func (e *Engine) SpendMonth(scopeType, scopeID string) (float64, error) {
+	return spendMonthOn(e.St.DB, scopeType, scopeID)
+}
+
+// spendMonthOn is the DB-generic form of SpendMonth — q is the write pool for
+// Engine (local mode) or the read pool for the central snapshot builder (see
+// populateBudgetExceeded), matching the queryer split risk_score.go uses for
+// RiskScoreCentral.
+func spendMonthOn(q dbQueryRower, scopeType, scopeID string) (float64, error) {
 	monthStart := time.Now().UTC().Format("2006-01") + "-01T00:00:00Z"
-	q := `SELECT COALESCE(SUM(cost_usd), 0) FROM runs WHERE started_at >= ?`
+	query := `SELECT COALESCE(SUM(cost_usd), 0) FROM runs WHERE started_at >= ?`
 	args := []any{monthStart}
 	switch scopeType {
 	case "agent":
-		q += ` AND agent_id = ?`
+		query += ` AND agent_id = ?`
 		args = append(args, scopeID)
 	case "project":
-		q += ` AND project = ?`
+		query += ` AND project = ?`
 		args = append(args, scopeID)
 	}
 	var spend float64
-	err := e.St.DB.QueryRow(q, args...).Scan(&spend)
+	err := q.QueryRow(query, args...).Scan(&spend)
 	return spend, err
 }
 
 // budgetLimit returns the configured limit for a scope (0 = no budget set).
 // The global scope falls back to config when no row exists.
 func (e *Engine) budgetLimit(scopeType, scopeID string) float64 {
+	return budgetLimitOn(e.St.DB, scopeType, scopeID, e.Cfg.Budget.GlobalMonthlyUSD)
+}
+
+// budgetLimitOn is the DB-generic form of budgetLimit — globalDefault is the
+// config fallback used only for the global scope when no budgets row exists.
+func budgetLimitOn(q dbQueryRower, scopeType, scopeID string, globalDefault float64) float64 {
 	var limit float64
-	err := e.St.DB.QueryRow(`SELECT limit_usd FROM budgets WHERE scope_type = ? AND scope_id = ?`,
+	err := q.QueryRow(`SELECT limit_usd FROM budgets WHERE scope_type = ? AND scope_id = ?`,
 		scopeType, scopeID).Scan(&limit)
 	if err == nil {
 		return limit
 	}
 	if scopeType == "global" {
-		return e.Cfg.Budget.GlobalMonthlyUSD
+		return globalDefault
 	}
 	return 0
+}
+
+// dbQueryRower is the subset of *sql.DB the scope-generic budget helpers
+// need — satisfied by both the write pool (local mode, Engine) and the read
+// pool (central snapshot path, BuildPolicySnapshot).
+type dbQueryRower interface {
+	QueryRow(query string, args ...any) *sql.Row
 }
 
 // checkBudget enforces the circuit breaker (G3): each applicable scope is

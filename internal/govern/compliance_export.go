@@ -1,10 +1,12 @@
 package govern
 
 import (
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"strconv"
 	"strings"
 
@@ -25,80 +27,33 @@ func csvCell(s string) string {
 	return s
 }
 
-// ComplianceBundle is the auditor-facing export: the full tamper-evident
-// trail with its live verification result, plus governance state.
-type ComplianceBundle struct {
-	GeneratedAt string          `json:"generated_at"`
-	GeneratedBy string          `json:"generated_by"`
-	Verify      VerifyResult    `json:"verify"`
-	AuditLog    []AuditEntry    `json:"audit_log"`
-	Approvals   []ApprovalEntry `json:"approvals"`
-	Flags       []FlagEntry     `json:"flags"`
-	RunsSummary []RunSummary    `json:"runs_summary"`
-}
-
-type VerifyResult struct {
-	OK       bool  `json:"ok"`
-	BrokenAt int64 `json:"broken_at,omitempty"`
-}
-
-type AuditEntry struct {
-	ID       int64  `json:"id"`
-	TS       string `json:"ts"`
-	Actor    string `json:"actor"`
-	Action   string `json:"action"`
-	Subject  string `json:"subject"`
-	Detail   string `json:"detail"`
-	PrevHash string `json:"prev_hash"`
-	Hash     string `json:"hash"`
-}
-
-type ApprovalEntry struct {
-	ID        int64  `json:"id"`
-	RunID     string `json:"run_id"`
-	Action    string `json:"action"`
-	Status    string `json:"status"`
-	DecidedBy string `json:"decided_by"`
-	Note      string `json:"note"`
-	Channel   string `json:"channel"`
-	Requested string `json:"requested_at"`
-	Decided   string `json:"decided_at"`
-}
-
-type FlagEntry struct {
-	ID      int64  `json:"id"`
-	RunID   string `json:"run_id"`
-	Reason  string `json:"reason"`
-	Status  string `json:"status"`
-	JiraKey string `json:"jira_key"`
-}
-
-type RunSummary struct {
-	ID      string  `json:"id"`
-	AgentID string  `json:"agent_id"`
-	Project string  `json:"project"`
-	Status  string  `json:"status"`
-	CostUSD float64 `json:"cost_usd"`
-	Started string  `json:"started_at"`
-}
-
 // BuildComplianceBundle assembles the export and records the export itself
 // in the audit trail (exports are governance actions too).
 func BuildComplianceBundle(st *store.Store, actor string) (*ComplianceBundle, error) {
 	b := &ComplianceBundle{GeneratedAt: store.Now(), GeneratedBy: actor}
-	broken, err := Verify(st)
+	broken, reason, err := Verify(st)
 	if err != nil {
 		return nil, err
 	}
-	b.Verify = VerifyResult{OK: broken == 0, BrokenAt: broken}
+	b.Verify = VerifyResult{OK: reason == "", BrokenAt: broken, Reason: reason}
 
-	if err := queryInto(st, `SELECT id, ts, actor, action, COALESCE(subject,''), COALESCE(detail,''), prev_hash, hash
-		FROM audit_log ORDER BY id`, func(rows scanner) error {
+	if err := queryInto(st, `SELECT id, ts, actor, action, COALESCE(subject,''), COALESCE(detail,''),
+		prev_hash, hash, signature, key_id FROM audit_log ORDER BY id`, func(rows scanner) error {
 		var e AuditEntry
-		if err := rows.Scan(&e.ID, &e.TS, &e.Actor, &e.Action, &e.Subject, &e.Detail, &e.PrevHash, &e.Hash); err != nil {
+		var sig []byte
+		var keyID sql.NullInt64
+		if err := rows.Scan(&e.ID, &e.TS, &e.Actor, &e.Action, &e.Subject, &e.Detail, &e.PrevHash, &e.Hash, &sig, &keyID); err != nil {
 			return err
 		}
+		e.Machine = machineFromDetail(e.Detail)
 		e.Detail = redactStr(e.Detail)
+		e.Signed = len(sig) > 0
+		if e.Signed {
+			e.KeyID = int(keyID.Int64)
+			b.SignedCount++
+		} else {
+			b.UnsignedCount++
+		}
 		b.AuditLog = append(b.AuditLog, e)
 		return nil
 	}); err != nil {
@@ -140,11 +95,54 @@ func BuildComplianceBundle(st *store.Store, actor string) (*ComplianceBundle, er
 		return nil, err
 	}
 
-	a := &Audit{St: st, Actor: actor}
-	if _, err := a.Append("compliance_export", "audit_log", fmt.Sprintf("%d audit entries exported", len(b.AuditLog))); err != nil {
+	cov, err := buildCoverageReport(st)
+	if err != nil {
 		return nil, err
 	}
+	b.Coverage = cov
+
+	if pubB64, ok := PublicKeyFromSigningKey(); ok {
+		if fp, err := PubkeyFingerprint(pubB64); err == nil {
+			b.PubkeyFingerprint = fp
+		}
+	}
+	b.TrustNote = pubkeyTrustNote
+	b.Disclosures = buildDisclosures()
+
+	dir := CheckpointDir()
+	if cp, ok, err := LatestCheckpoint(dir); err == nil && ok {
+		cpCopy := cp
+		b.Checkpoint = &cpCopy
+	}
+
+	a := &Audit{St: st, Actor: actor}
+	exportID, err := a.Append("compliance_export", "audit_log", fmt.Sprintf("%d audit entries exported", len(b.AuditLog)))
+	if err != nil {
+		return nil, err
+	}
+	writeExportCheckpoint(st, exportID)
 	return b, nil
+}
+
+// writeExportCheckpoint anchors an on-demand checkpoint at export time (in
+// addition to the every-N-rows cadence in AppendTx) so an auditor pulling a
+// compliance bundle always has a checkpoint at least as recent as the bundle
+// itself. Best-effort: no signing key configured means nothing to sign, and
+// a disk error here must not fail the export the auditor is waiting on.
+func writeExportCheckpoint(st *store.Store, tipID int64) {
+	priv, ok := loadSigningKey()
+	if !ok {
+		return
+	}
+	var tipHash string
+	_ = st.DB.QueryRow(`SELECT hash FROM audit_log WHERE id = ?`, tipID).Scan(&tipHash)
+	if tipHash == "" {
+		return
+	}
+	dir, offsite := resolveCheckpointDirs()
+	if err := WriteCheckpoint(priv, dir, offsite, tipID, tipHash, store.Now(), firstSignedIDValue(st)); err != nil {
+		log.Printf("audit: export checkpoint at id %d failed: %v", tipID, err)
+	}
 }
 
 // WriteJSON / WriteCSV serialize the bundle. CSV is the flat audit trail
@@ -157,12 +155,13 @@ func (b *ComplianceBundle) WriteJSON(w io.Writer) error {
 
 func (b *ComplianceBundle) WriteCSV(w io.Writer) error {
 	cw := csv.NewWriter(w)
-	if err := cw.Write([]string{"id", "ts", "actor", "action", "subject", "detail", "prev_hash", "hash"}); err != nil {
+	if err := cw.Write([]string{"id", "ts", "actor", "action", "subject", "detail", "prev_hash", "hash", "signed", "machine"}); err != nil {
 		return err
 	}
 	for _, e := range b.AuditLog {
 		if err := cw.Write([]string{strconv.FormatInt(e.ID, 10), e.TS, e.Actor,
-			csvCell(e.Action), csvCell(e.Subject), csvCell(e.Detail), e.PrevHash, e.Hash}); err != nil {
+			csvCell(e.Action), csvCell(e.Subject), csvCell(e.Detail), e.PrevHash, e.Hash,
+			strconv.FormatBool(e.Signed), csvCell(e.Machine)}); err != nil {
 			return err
 		}
 	}

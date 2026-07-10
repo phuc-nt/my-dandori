@@ -3,6 +3,18 @@
 Mọi thay đổi đáng kể của Dandori. Định dạng theo [Keep a Changelog](https://keepachangelog.com/);
 mỗi mốc là một "version" nội bộ (một sprint có kế hoạch + red-team + review). Ngày theo `YYMMDD`.
 
+## [v15] — Central-mode Parity — 260710
+
+Đóng nhóm gap central-mode lặp qua v12/v13/v14 (governance + distribution parity), qua red-team 3 reviewer (25 finding — plan gốc bị chứng minh không implementable → rework toàn bộ) + code-review từng phase (một RCE thật bị bắt + vá ở phase distribution).
+
+- **Audit anchor** (`internal/govern/audit_*.go`): Ed25519 co-sign mỗi audit row + **signed checkpoint đẩy ra ngoài box** (git-commit `docs/audit-checkpoints/` + offsite optional) làm trust-root. `chainHash` canonicalize (length-prefix, chống delimiter-shift). Monotonic signing (chống rebuild-unsigned). `Verify` reason-aware (chain/signature/truncated). Chống: sửa-1-row, rebuild-toàn-bộ, xoá-tail-rows.
+- **Central audit cho ingested runs** (`internal/ingest/guardrail_audit.go`): central run tạo audit_log row **co-signed, atomic trong batch tx** (`AppendTx`, không deadlock 1-conn pool). Anti-spoof (run-owner check), anti-suppression (server-derived content-hash dedup, không client ULID), action từ Evaluate. Detector flag-only.
+- **G5 risk-score central** (`policy_snapshot.go`): server tính per-run, snapshot **scoped per-operator** (không rò fleet data), read pool + server cache. Client-attested denial zero-weight (chống poison).
+- **G3 budget central**: vượt trần → **Ask** (central active-run luôn NULL model), per-scope (agent/project). `budget.mode: hard` giữ hard-stop.
+- **Skill/kit central distribution** (`internal/ingest/skill_kit_*.go`): pull qua network, verify `sha256(bytes nhận) == approve-hash` + **per-unit Ed25519 signature over (unit_id, approve_hash)** — chống RCE (server độc serve bytes tráo). Giữ deny-list + symlink-safe + per-file hash.
+- **Fleet compliance export**: gồm central runs + signatures + checkpoint; coverage = decision-event-thiếu-audit (không flag oan clean run); pubkey **fingerprint out-of-band** là trust-root; disclose chain-order≠time-order + client-attested caveat.
+- **Threat model honest**: trên single-box (key + DB cùng máy) anchor không chống insider-có-key — documented, không overclaim.
+
 ## [v14] — GOVERN Hardening — 260708
 
 Bốn nâng cấp guardrail nhặt từ so sánh với Omnigent (meta-harness), qua red-team 3 reviewer (10 finding, 4 Critical) trước khi code.

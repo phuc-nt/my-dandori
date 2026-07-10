@@ -292,12 +292,12 @@ func TestE2EKitPublishApprovalRunsOverWeb(t *testing.T) {
 		t.Fatalf("unit.State = %q, want published (web decide must run the applier inline)", u.State)
 	}
 
-	broken, err := govern.Verify(s.Store)
+	broken, reason, err := govern.Verify(s.Store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if broken != 0 {
-		t.Errorf("audit chain broken=%d after kit publish, want 0", broken)
+	if reason != "" {
+		t.Errorf("audit chain broken=%d reason=%q after kit publish, want intact", broken, reason)
 	}
 }
 

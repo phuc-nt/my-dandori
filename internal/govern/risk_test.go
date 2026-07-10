@@ -229,14 +229,50 @@ func TestRiskScoreTrustedBandDoesNotSkip(t *testing.T) {
 	}
 }
 
-// TestSnapshotEvaluateHasNoRiskBranch proves the central-mode offline
-// evaluator's behavior is unchanged by G5 — it has no local events/audit_log
-// to score against, so it must never gain a risk branch.
+// TestSnapshotEvaluateHasNoRiskBranch proves the invariant that survives G5
+// landing in the snapshot: Evaluate performs NO DATABASE ACCESS. G5's score
+// is precomputed server-side (BuildPolicySnapshot/populateRiskScores) into
+// RiskScores/RiskThreshold/RiskMode/RiskGuardedTools — Evaluate only ever
+// reads those already-resolved fields, exactly like it reads Rules/Bands.
+// This closes over a store with every table dropped: if Evaluate tried any
+// DB access at all (directly or through a *Engine it shouldn't hold), every
+// query would error/panic and the call could not return a clean Allow.
 func TestSnapshotEvaluateHasNoRiskBranch(t *testing.T) {
-	snap := &PolicySnapshot{Bands: map[string]string{}}
+	e := testEngine(t)
+	// Every table gone: any DB access from Evaluate would surface immediately
+	// as an error or a panic, not a silent pass.
+	if _, err := e.St.DB.Exec(`DROP TABLE events`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.St.DB.Exec(`DROP TABLE audit_log`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.St.DB.Exec(`DROP TABLE runs`); err != nil {
+		t.Fatal(err)
+	}
+
+	snap := &PolicySnapshot{Bands: map[string]string{}, RiskScores: map[string]int{}}
 	tc := ToolCall{RunID: "r", AgentID: "a", ToolName: "Bash", Command: "ls"}
-	d := snap.Evaluate(tc)
+	d, action := snap.Evaluate(tc)
 	if d.Verdict != Allow {
-		t.Errorf("snapshot Evaluate with no rules/kill/budget must allow, got %s: %s", d.Verdict, d.Reason)
+		t.Errorf("snapshot Evaluate with no rules/kill/budget/risk must allow (no DB access to fail against), got %s: %s", d.Verdict, d.Reason)
+	}
+	if action != "" {
+		t.Errorf("Allow verdict must carry no action discriminator, got %q", action)
+	}
+
+	// Same store, but now with an over-threshold guarded-tool score in the
+	// snapshot: Evaluate must still resolve this from the field alone, never
+	// by querying the (now-gone) tables.
+	snap.RiskScores["r"] = 150
+	snap.RiskThreshold = 100
+	snap.RiskGuardedTools = []string{"Bash"}
+	snap.RiskMode = "gate"
+	d2, action2 := snap.Evaluate(tc)
+	if d2.Verdict != Ask {
+		t.Errorf("risk branch must resolve from snapshot fields even with every DB table dropped, got %s: %s", d2.Verdict, d2.Reason)
+	}
+	if action2 != ActionRiskGate {
+		t.Errorf("action = %q, want %q", action2, ActionRiskGate)
 	}
 }
