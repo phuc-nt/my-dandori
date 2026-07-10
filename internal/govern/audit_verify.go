@@ -107,6 +107,15 @@ func Verify(st *store.Store) (brokenID int64, reason string, err error) {
 			// Unsigned row after signing was already turned on: either a
 			// rebuild that dropped signatures, or a downgrade. Both are the
 			// attack monotonic signing exists to catch.
+			//
+			// The bound is strict: stripping ONLY the first-signed row's own
+			// signature (id == firstSignedID) while leaving its content and
+			// every later signature intact is deliberately not flagged here —
+			// it gains an attacker nothing, because that row's content stays
+			// hash-locked into the chain (any edit trips the "chain" check) and
+			// rows after it remain signature-verified. Flagging it would only
+			// add a false negative-of-a-nonexistent-attack; the strip-ALL
+			// rebuild is still caught at the second row.
 			return id, "signature", nil
 		}
 
